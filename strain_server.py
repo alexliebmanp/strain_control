@@ -24,7 +24,7 @@ ponder making multiprocessed rather than multithreaded, at least for the control
 
 '''
 
-from threading_classes import LockedVar, StoppableThread
+from threading_classes import LockedVar, StoppableThread, LockedVal, StoppableProcess
 from simulation import SimulatedLCR, SimulatedPS
 from pymeasure.instruments.agilent import AgilentE4980
 from pymeasure.instruments.razorbill import razorbillRP100
@@ -32,6 +32,8 @@ import pyvisa
 from simple_pid import PID
 from threading import Thread, Lock, Event
 import threading
+from multiprocessing import Process, Value
+import multiprocessing as mp
 import matplotlib.pyplot as plt
 import numpy as np
 import time
