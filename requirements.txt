@@ -2,5 +2,5 @@ simple-pid
 PyMeasure
 pyvisa
 numpy
-pyqtgraph
-pyqt5
+pyqtgraph #(installed from conda-forge in small lab)
+pyqt5 #(5.12 or higher, swtiched out of 5.9.7 on small lab computer)
