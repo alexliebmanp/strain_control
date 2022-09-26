@@ -42,7 +42,7 @@ from pyqtgraph import QtCore, QtWidgets
 ##########################
 ### USER SETTINGS HERE ###
 ##########################
-global SIM, STARTING_SETPOINT, SLEW_RATE, P, I, D, L0, MAX_VOLTAGE, MIN_VOLTAGE, HOST, PORT, LCR_ADDRESS, PS_ADDRESS, FILENAMEHEAD
+global SIM, STARTING_SETPOINT, SLEW_RATE, P, I, D, L0, MAX_VOLTAGE, MIN_VOLTAGE, HOST, PORT, LCR_ADDRESS, PS_ADDRESS, LOG_FILENAMEHEAD
 
 SIM=False
 STARTING_SETPOINT=0
@@ -68,7 +68,7 @@ HOST = 'localhost'
 PORT = 15200
 
 ### LOGGING
-FILENAMEHEAD = r'C:\Users\orens\Google Drive\Shared drives\Orenstein Lab\Data\Strain cell log files'
+LOG_FILENAMEHEAD = r'C:\Users\orens\Google Drive\Shared drives\Orenstein Lab\Data\Strain cell log files'
 
 ###########################
 ###########################
@@ -301,7 +301,7 @@ class StrainServer:
         returns: None
         '''
         print('Starting file log')
-        filename_head = FILENAMEHEAD
+        filename_head = LOG_FILENAMEHEAD
         filename = f'\StrainServerLog_{time.strftime("%y%m%d_%H.%M.%S%z", time.localtime())}.dat'
         tot_filename = filename_head + filename
         self.filepath = LockedVar(tot_filename)
