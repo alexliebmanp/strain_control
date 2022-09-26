@@ -56,7 +56,6 @@ C_MEASURED_0 = 0.812 # pF, measured capacitance at 300K and 0V after a zeroing p
 C_0 = 0.808 # pF, true capacitance at 300K and 0 V.
 
 ### LIMIT OUTPUT VOLTAGE HERE ###
-
 MAX_VOLTAGE = 5#119 # V
 MIN_VOLTAGE = -5#-19 # V
 
@@ -67,6 +66,9 @@ MONTANA_ADDRESS = '10.1.1.15'
 LAKESHORE_ADDRESS = ''
 HOST = 'localhost'
 PORT = 15200
+
+### LOGGING
+FILENAMEHEAD = r'C:\Users\orens\Google Drive\Shared drives\Orenstein Lab\Data\Strain cell log files'
 
 ###########################
 ###########################
@@ -216,11 +218,14 @@ class StrainServer:
 
     def start_strain_monitor(self):
         '''
-        Continuously reads lcr meter and ps and updates all state variables to class instance variables. In addition, in the future this should handle logging of instrument data.
+        Continuously reads lcr meter and ps and updates all state variables to class instance variables.
         '''
         print('Starting strain monitor')
         current_thread = threading.current_thread()
+        # print('In start_strain_monitor(). Thread: '+str(current_thread))
+        # print(current_thread)
         while current_thread.stopped() == False:
+            # print('current_thread in start_strain_monitor() active. Thread: '+str(current_thread))
             strain, cap, imaginary_impedance, dl = self.get_strain()
             temperature = self.cryo.get_platform_temperature()[1]
             v1 = self.get_voltage(1)
@@ -250,8 +255,10 @@ class StrainServer:
         '''
         print(f'Opening communication socket on {self.host} at port {self.port}')
         current_thread = threading.current_thread()
+        # print('In start_comms(). Thread: '+str(current_thread))
         while True:
             if current_thread.stopped()==False:
+                # print('current_thread in start_comms() active. Thread: '+str(current_thread))
                 self.serversocket.listen(1)
                 print('Listening for strain client')
                 conn, addr = self.serversocket.accept()
@@ -264,8 +271,9 @@ class StrainServer:
                             #print('Message received and strain client terminated connection.')
                             break
                         decoded_message = message.decode('utf8')
+                        # print(message, decoded_message)
                         try:
-                            response = self.parse_message(decoded_message)
+                            response = self.parse_message(decoded_message) # this is a race condition! --elizabeth
                         except:
                             error_msg = 'Error: unable to parse message: '+str(message)
                             print(error_msg)
@@ -293,12 +301,14 @@ class StrainServer:
         returns: None
         '''
         print('Starting file log')
-        filename_head = r'C:\Users\orens\Google Drive\Shared drives\Orenstein Lab\Data\Strain cell log files'
+        filename_head = FILENAMEHEAD
         filename = f'\StrainServerLog_{time.strftime("%y%m%d_%H.%M.%S%z", time.localtime())}.dat'
         tot_filename = filename_head + filename
         self.filepath = LockedVar(tot_filename)
         time_interval = self.logging_interval.locked_read()
         current_thread = threading.current_thread()
+        # print('in filelog()')
+        # print(current_thread)
         with open(self.filepath.locked_read(), 'a') as f:
             f.write(f'Time\tStrain\tPID Setpoint\tCapacitance (pF)\tdl (um)\tSample Length(um)\tVoltage 1 (V)\tVoltage 2 (V)\tOutput 1\tOutput 2\tP\tI\tD\tMin Voltage 1\tMin Voltage 2\tMax Voltage 1\tMax Voltage 2\tSlew Rate\tMode\tStatus\tRun\tTemperature (K)\n')
         while current_thread.stopped() == False:
@@ -728,11 +738,16 @@ class StrainServer:
         '''
         print('Shutting down strain server:')
         if self.comms_loop.is_alive():
+            # print('self.comms_loop is alive. Thread: '+str(threading.current_thread()))
             self.comms_loop.stop()
+            # print('After self.comms_loop.stop(). Thread: '+str(threading.current_thread()))
             # can't join because we might be in it!
         if self.strain_control_loop.is_alive():
+            # print('self.strain_control_loop is alive. Thread: '+str(threading.current_thread()))
             self.strain_control_loop.stop()
+            # print('After self.strain_control_loop.stop(). Thread: '+str(threading.current_thread()))
             self.strain_control_loop.join()
+            # print('After self.strain_control_loop.join(). Thread: '+str(threading.current_thread()))
         if mode==1:
             print('Ramping voltage on all channels to 0')
             self.set_voltage(1, 0)
@@ -743,8 +758,11 @@ class StrainServer:
             self.set_output(1,0)
             self.set_output(2,0)
         if self.strain_monitor_loop.is_alive():
+            # print('self.strain_monitor_loop is alive. Thread: '+str(threading.current_thread()))
             self.strain_monitor_loop.stop()
+            # print('After self.strain_monitor_loop.stop(). Thread: '+(threading.current_thread()))
             self.strain_monitor_loop.join()
+            # print('after self.strain_monitor_loop.join(). Thread: '+str(threading.current_thread()))
         self.run.locked_update(False)
         queue_write(self.run_q, False)
 
@@ -784,34 +802,48 @@ class StrainServer:
 
         # start monitoring lcr meter
         self.strain_monitor_loop = StoppableThread(target=self.start_strain_monitor)
+        # print('After self.strain_monitor_loop created. Thread: '+str(threading.current_thread()))
         self.strain_monitor_loop.start()
+        # print('After self.strain_monitor_loop.start(). Thread: '+str(threading.current_thread()))
 
         # create conntrol thread
         self.strain_control_loop = StoppableThread(target=self.start_strain_control, args=(self.ctrl_mode.locked_read(),))
+        # print('After self.strain_control_loop created. Thread: '+str(threading.current_thread()))
         # why no self.strain_control_loop.start()? --Elizabeth
 
         # start comms
         self.comms_loop = StoppableThread(target=self.start_comms)
+        # print('After self.comms_loop created. Thread: '+str(threading.current_thread()))
         self.comms_loop.start()
+        # print('After self.comms_loop.start(). Thread: '+str(threading.current_thread()))
 
-        # write file to log data every 0.5 seconds?
-        self.filelog_loop = StoppableThread(target=self.filelog, args=(self.logging_interval.locked_read(),))
-        self.filelog_loop.start()
+        # write log data to file only when real (not simulated) data is being acquired
+        if self.sim.locked_read()==False:
+            self.filelog_loop = StoppableThread(target=self.filelog, args=(self.logging_interval.locked_read(),))
+            self.filelog_loop.start()
 
         # infinite loop display
         display = StrainDisplay(queues)
         self.display_process = mp.Process(target=display.start_display)
+        # print('After display_process created. Thread: '+str(threading.current_thread()))
         self.display_process.start()
+        # print('After display_process.start(). Thread: '+str(threading.current_thread()))
         self.display_process.join()
+        # print('After self.display_process.join(). Thread: '+str(threading.current_thread()))
 
         # join comm loop if it hasn't already been stopped. There is an issue here because unless the program is shut down by a comms event, the comms loop will be hung up listening...hmmm
         if self.comms_loop.is_alive():
+            # print('self.comms_loop is alive in do_main_loop(). Thread: '+str(threading.current_thread()))
             self.comms_loop.stop()
+            # print('After self.comms_loop.stop(). Thread: '+str(threading.current_thread()))
             self.comms_loop.join()
+            # print('After self.comms_loop.join(). Thread: '+str(threading.current_thread()))
 
-        if self.filelog_loop.is_alive():
-            self.filelog_loop.stop()
-            self.filelog_loop.join()
+        if self.sim.locked_read()==False:
+            if self.filelog_loop.is_alive():
+                self.filelog_loop.stop()
+                self.filelog_loop.join()
+
         print('Strain server shutdown complete')
 
 class StrainDisplay:
