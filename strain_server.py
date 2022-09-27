@@ -44,7 +44,7 @@ from pyqtgraph import QtCore, QtWidgets
 ##########################
 global SIM, STARTING_SETPOINT, SLEW_RATE, P, I, D, L0, MAX_VOLTAGE, MIN_VOLTAGE, HOST, PORT, LCR_ADDRESS, PS_ADDRESS, LOG_FILENAMEHEAD
 
-SIM=False
+SIM=True
 STARTING_SETPOINT=0
 SLEW_RATE=0.5
 P=100
@@ -726,7 +726,7 @@ class StrainServer:
             response = '1'
         return response
 
-    def shutdown(self, mode):
+    def shutdown(self, mode=1):
         '''
         Initiates shutdown of server.
 
@@ -763,8 +763,12 @@ class StrainServer:
             # print('After self.strain_monitor_loop.stop(). Thread: '+str(threading.current_thread()))
             self.strain_monitor_loop.join()
             # print('after self.strain_monitor_loop.join(). Thread: '+str(threading.current_thread()))
-        self.run.locked_update(False)
+        if self.sim.locked_read()==False:
+            if self.filelog_loop.is_alive():
+                self.filelog_loop.stop()
+                self.filelog_loop.join()
         queue_write(self.run_q, False)
+        self.run.locked_update(False)
 
     def do_main_loop(self):
         '''
@@ -831,19 +835,11 @@ class StrainServer:
         self.display_process.join()
         # print('After self.display_process.join(). Thread: '+str(threading.current_thread()))
 
-        # join comm loop if it hasn't already been stopped. There is an issue here because unless the program is shut down by a comms event, the comms loop will be hung up listening...hmmm
+        #if self.run.locked_read()==True:
+        #    self.shutdown()
         if self.comms_loop.is_alive():
-            # print('self.comms_loop is alive in do_main_loop(). Thread: '+str(threading.current_thread()))
             self.comms_loop.stop()
-            # print('After self.comms_loop.stop(). Thread: '+str(threading.current_thread()))
             self.comms_loop.join()
-            # print('After self.comms_loop.join(). Thread: '+str(threading.current_thread()))
-
-        if self.sim.locked_read()==False:
-            if self.filelog_loop.is_alive():
-                self.filelog_loop.stop()
-                self.filelog_loop.join()
-
         print('Strain server shutdown complete')
 
 class StrainDisplay:
