@@ -158,7 +158,7 @@ class StrainServer:
 
         current_setpoint = self.setpoint.locked_read()
         self.ctrl_status.locked_update(1)
-        queue_write(self.ctrl_status, 1)
+        queue_write(self.ctrl_status_q, 1)
         if mode==1:
             pid_loop = StoppableThread(target=self.start_pid, args=(current_setpoint,), kwargs={'limit':False})
             print('Starting PID control')
@@ -213,7 +213,7 @@ class StrainServer:
             pid_loop.join()
 
         self.ctrl_status.locked_update(0)
-        queue_write(self.ctrl_status, 0)
+        queue_write(self.ctrl_status_q, 0)
         print('Shut down control thread')
 
     def start_strain_monitor(self):
@@ -242,7 +242,7 @@ class StrainServer:
             self.output_1.locked_update(out1)
             self.output_2.locked_update(out2)
             # update queues
-            queue_update = [self.strain, self.cap, self.dl, self.voltage_1, self.voltage_2, self.output_1, self.output_2, self.temperature_q]
+            queue_update = [self.strain_q, self.cap_q, self.dl_q, self.voltage_1_q, self.voltage_2_q, self.output_1_q, self.output_2_q, self.temperature_q]
             state_values = [strain, cap, dl, v1, v2, out1, out2, temperature]
             for ii, q in enumerate(queue_update):
                 queue_write(q, state_values[ii])
@@ -312,7 +312,7 @@ class StrainServer:
         with open(self.filepath.locked_read(), 'a') as f:
             f.write(f'Time\tStrain\tPID Setpoint\tCapacitance (pF)\tdl (um)\tSample Length(um)\tVoltage 1 (V)\tVoltage 2 (V)\tOutput 1\tOutput 2\tP\tI\tD\tMin Voltage 1\tMin Voltage 2\tMax Voltage 1\tMax Voltage 2\tSlew Rate\tMode\tStatus\tRun\tTemperature (K)\n')
         while current_thread.stopped() == False:
-            params = [self.strain, self.setpoint_q, self.cap, self.dl, self.l0_samp, self.voltage_1, self.voltage_2, self.output_1, self.output_2, self.p, self.i, self.d, self.min_voltage_1, self.min_voltage_2, self.max_voltage_1, self.max_voltage_2, self.slew_rate, self.ctrl_mode, self.ctrl_status, self.run, self.temperature]
+            params = [self.strain, self.setpoint, self.cap, self.dl, self.l0_samp, self.voltage_1, self.voltage_2, self.output_1, self.output_2, self.p, self.i, self.d, self.min_voltage_1, self.min_voltage_2, self.max_voltage_1, self.max_voltage_2, self.slew_rate, self.ctrl_mode, self.ctrl_status, self.run, self.temperature]
             with open(self.filepath.locked_read(), 'a') as f:
                 f.write(str(datetime.datetime.now())+'\t')
                 allbutlast = ''.join(str(logval.locked_read())+'\t' for logval in params[:-1])
@@ -526,7 +526,7 @@ class StrainServer:
             self.ps.slew_rate_1 = slew_rate
             self.ps.slew_rate_2 = slew_rate
         self.slew_rate.locked_update(slew_rate)
-        queue_write(self.slew_rate, slew_rate)
+        queue_write(self.slew_rate_q, slew_rate)
 
     def get_strain(self):
         '''
@@ -633,7 +633,7 @@ class StrainServer:
                 if mode!=current_mode:
                     print(f'Stopping control thread in mode {current_mode} and restarting in mode {mode}')
                     self.ctrl_mode.locked_update(mode)
-                    queue_write(self.ctrl_mode, mode)
+                    queue_write(self.ctrl_mode_q, mode)
                     self.strain_control_loop.stop()
                     self.strain_control_loop.join()
                     self.strain_control_loop = StoppableThread(target=self.start_strain_control, args=(mode,))
@@ -643,7 +643,7 @@ class StrainServer:
             else:
                 print(f'Starting control thread in mode {mode}')
                 self.ctrl_mode.locked_update(mode)
-                queue_write(self.ctrl_mode, mode)
+                queue_write(self.ctrl_mode_q, mode)
                 self.strain_control_loop = StoppableThread(target=self.start_strain_control, args=(mode,))
                 self.strain_control_loop.start()
             response = '1'
@@ -664,7 +664,7 @@ class StrainServer:
         elif re.match(r'STR:-?[0-9]+[\.]?[0-9]*', message):
             setpoint = float(re.search(r'-?[0-9]+[\.]?[0-9]*', message)[0])
             self.setpoint.locked_update(setpoint)
-            queue_write(self.setpoint, setpoint)
+            queue_write(self.setpoint_q, setpoint)
             response = '1'
         elif re.match(r'VOL[1-2]:\?', message):
             channel = int(re.search(r'[1-2]', message)[0])
@@ -690,21 +690,21 @@ class StrainServer:
             if channel==1:
                 self.min_voltage_1.locked_update(min)
                 self.max_voltage_1.locked_update(max)
-                queue_write(self.min_voltage_1, min)
-                queue_write(self.max_voltage_1, max)
+                queue_write(self.min_voltage_1_q, min)
+                queue_write(self.max_voltage_1_q, max)
                 response = '1'
             elif channel==2:
                 self.min_voltage_2.locked_update(min)
                 self.max_voltage_2.locked_update(max)
-                queue_write(self.min_voltage_2, min)
-                queue_write(self.max_voltage_2, max)
+                queue_write(self.min_voltage_2_q, min)
+                queue_write(self.max_voltage_2_q, max)
                 response = '1'
             else:
                 response = 'Invalid channel'
         elif re.match(r'SAMPL0:[0-9]+[\.]?[0-9]*', message):
             samp_l0 = float(re.findall(r'[0-9]+[\.]?[0-9]*', message)[1])
             self.l0_samp.locked_update(samp_l0)
-            queue_write(self.l0_samp, samp_l0)
+            queue_write(self.l0_samp_q, samp_l0)
             response='1'
         elif re.match(r'PID:[0-9]+[\.]?[0-9]*,[0-9]+[\.]?[0-9]*,[0-9]+[\.]?[0-9]*', message):
             p, i, d = [float(j) for j in re.findall(r'[0-9]+[\.]?[0-9]*', message)]
@@ -712,9 +712,9 @@ class StrainServer:
             self.p.locked_update(p)
             self.i.locked_update(i)
             self.d.locked_update(d)
-            queue_write(self.p, p)
-            queue_write(self.i, i)
-            queue_write(self.d, d)
+            queue_write(self.p_q, p)
+            queue_write(self.i_q, i)
+            queue_write(self.d_q, d)
             response = '1'
         elif re.match(r'VSLW:[0-9]+[\.]?[0-9]*', message):
             slew_rate = float(re.search(r'[0-9]+[\.]?[0-9]*', message)[0])
@@ -726,13 +726,13 @@ class StrainServer:
             response = '1'
         return response
 
-    def shutdown(self, mode=1):
+    def shutdown(self, mode):
         '''
         Initiates shutdown of server.
 
         args:
             - mode(int):        0 to leave state of system as is, or 1 to ramp voltages down to 0.
-            - run
+            - run_q
 
         returns: None
         '''
@@ -760,15 +760,11 @@ class StrainServer:
         if self.strain_monitor_loop.is_alive():
             # print('self.strain_monitor_loop is alive. Thread: '+str(threading.current_thread()))
             self.strain_monitor_loop.stop()
-            # print('After self.strain_monitor_loop.stop(). Thread: '+str(threading.current_thread()))
+            # print('After self.strain_monitor_loop.stop(). Thread: '+(threading.current_thread()))
             self.strain_monitor_loop.join()
             # print('after self.strain_monitor_loop.join(). Thread: '+str(threading.current_thread()))
-        if self.sim.locked_read()==False:
-            if self.filelog_loop.is_alive():
-                self.filelog_loop.stop()
-                self.filelog_loop.join()
-        queue_write(self.run, False)
         self.run.locked_update(False)
+        queue_write(self.run_q, False)
 
     def do_main_loop(self):
         '''
@@ -776,31 +772,31 @@ class StrainServer:
         '''
         # setup queues
         state_values = [self.strain.locked_read(), self.setpoint.locked_read(), self.cap.locked_read(), self.dl.locked_read(), self.l0_samp.locked_read(), self.voltage_1.locked_read(), self.voltage_2.locked_read(), self.output_1.locked_read(), self.output_2.locked_read(), self.p.locked_read(), self.i.locked_read(), self.d.locked_read(), self.min_voltage_1.locked_read(), self.min_voltage_2.locked_read(), self.max_voltage_1.locked_read(), self.max_voltage_2.locked_read(), self.slew_rate.locked_read(), self.ctrl_mode.locked_read(), self.ctrl_status.locked_read(), self.run.locked_read(), self.temperature.locked_read()]
-        strain = Queue()
-        setpoint = Queue()
-        cap = Queue()
-        dl = Queue()
-        l0_samp = Queue()
-        voltage_1 = Queue()
-        voltage_2 = Queue()
-        output_1 = Queue()
-        output_2 = Queue()
-        p = Queue()
-        i = Queue()
-        d = Queue()
-        min_voltage_1 = Queue()
-        min_voltage_2 = Queue()
-        max_voltage_1 = Queue()
-        max_voltage_2 = Queue()
-        slew_rate = Queue()
-        ctrl_mode = Queue()
-        ctrl_status = Queue()
-        run = Queue()
-        temperature = Queue()
-        queues = [strain, setpoint, cap, dl, l0_samp, voltage_1, voltage_2, output_1, output_2, p, i, d, min_voltage_1, min_voltage_2, max_voltage_1, max_voltage_2, slew_rate, ctrl_mode, ctrl_status, run, temperature]
+        strain_q = Queue()
+        setpoint_q = Queue()
+        cap_q = Queue()
+        dl_q = Queue()
+        l0_samp_q = Queue()
+        voltage_1_q = Queue()
+        voltage_2_q = Queue()
+        output_1_q = Queue()
+        output_2_q = Queue()
+        p_q = Queue()
+        i_q = Queue()
+        d_q = Queue()
+        min_voltage_1_q = Queue()
+        min_voltage_2_q = Queue()
+        max_voltage_1_q = Queue()
+        max_voltage_2_q = Queue()
+        slew_rate_q = Queue()
+        ctrl_mode_q = Queue()
+        ctrl_status_q = Queue()
+        run_q = Queue()
+        temperature_q = Queue()
+        queues = [strain_q, setpoint_q, cap_q, dl_q, l0_samp_q, voltage_1_q, voltage_2_q, output_1_q, output_2_q, p_q, i_q, d_q, min_voltage_1_q, min_voltage_2_q, max_voltage_1_q, max_voltage_2_q, slew_rate_q, ctrl_mode_q, ctrl_status_q, run_q, temperature_q]
         for ii, q in enumerate(queues):
             queue_write(q, state_values[ii])
-        [self.strain, self.setpoint, self.cap, self.dl, self.l0_samp, self.voltage_1, self.voltage_2, self.output_1, self.output_2, self.p, self.i, self.d, self.min_voltage_1, self.min_voltage_2, self.max_voltage_1, self.max_voltage_2, self.slew_rate, self.ctrl_mode, self.ctrl_status, self.run, self.temperature] = queues
+        [self.strain_q, self.setpoint_q, self.cap_q, self.dl_q, self.l0_samp_q, self.voltage_1_q, self.voltage_2_q, self.output_1_q, self.output_2_q, self.p_q, self.i_q, self.d_q, self.min_voltage_1_q, self.min_voltage_2_q, self.max_voltage_1_q, self.max_voltage_2_q, self.slew_rate_q, self.ctrl_mode_q, self.ctrl_status_q, self.run_q, self.temperature_q] = queues
 
         self.initialize_instruments()
 
@@ -835,11 +831,19 @@ class StrainServer:
         self.display_process.join()
         # print('After self.display_process.join(). Thread: '+str(threading.current_thread()))
 
-        #if self.run.locked_read()==True:
-        #    self.shutdown()
+        # join comm loop if it hasn't already been stopped. There is an issue here because unless the program is shut down by a comms event, the comms loop will be hung up listening...hmmm
         if self.comms_loop.is_alive():
+            # print('self.comms_loop is alive in do_main_loop(). Thread: '+str(threading.current_thread()))
             self.comms_loop.stop()
+            # print('After self.comms_loop.stop(). Thread: '+str(threading.current_thread()))
             self.comms_loop.join()
+            # print('After self.comms_loop.join(). Thread: '+str(threading.current_thread()))
+
+        if self.sim.locked_read()==False:
+            if self.filelog_loop.is_alive():
+                self.filelog_loop.stop()
+                self.filelog_loop.join()
+
         print('Strain server shutdown complete')
 
 class StrainDisplay:
@@ -847,9 +851,9 @@ class StrainDisplay:
     def __init__(self, queues):
 
         # unpack queues
-        [self.strain, self.setpoint, self.cap, self.dl, self.l0_samp, self.voltage_1, self.voltage_2, self.output_1, self.output_2, self.p, self.i, self.d, self.min_voltage_1, self.min_voltage_2, self.max_voltage_1, self.max_voltage_2, self.slew_rate, self.ctrl_mode, self.ctrl_status, self.run, self.temperature] = queues
+        [self.strain_q, self.setpoint_q, self.cap_q, self.dl_q, self.l0_samp_q, self.voltage_1_q, self.voltage_2_q, self.output_1_q, self.output_2_q, self.p_q, self.i_q, self.d_q, self.min_voltage_1_q, self.min_voltage_2_q, self.max_voltage_1_q, self.max_voltage_2_q, self.slew_rate_q, self.ctrl_mode_q, self.ctrl_status_q, self.run_q, self.temperature_q] = queues
         # setup dictionaries
-        self.labels_dict = {"Sample Length (um)":self.l0_samp, "Setpoint":self.setpoint, "Strain":self.strain, "Capacitance (pF)":self.cap, "dL (um)":self.dl, "Voltage 1 (V)":self.voltage_1, "Voltage 2 (V)":self.voltage_2, "P":self.p, "I":self.i, "D":self.d, "Voltage 1 Min":self.min_voltage_1, "Voltage 1 Max":self.max_voltage_1, "Voltage 2 Min":self.min_voltage_2, "Voltage 2 Max":self.max_voltage_2, "Slew Rate":self.slew_rate, "Control Status":self.ctrl_status, "Control Mode":self.ctrl_mode, "Output 1":self.output_1, "Output_2":self.output_2, "Platform Temperature (K)":self.temperature}
+        self.labels_dict = {"Sample Length (um)":self.l0_samp_q, "Setpoint":self.setpoint_q, "Strain":self.strain_q, "Capacitance (pF)":self.cap_q, "dL (um)":self.dl_q, "Voltage 1 (V)":self.voltage_1_q, "Voltage 2 (V)":self.voltage_2_q, "P":self.p_q, "I":self.i_q, "D":self.d_q, "Voltage 1 Min":self.min_voltage_1_q, "Voltage 1 Max":self.max_voltage_1_q, "Voltage 2 Min":self.min_voltage_2_q, "Voltage 2 Max":self.max_voltage_2_q, "Slew Rate":self.slew_rate_q, "Control Status":self.ctrl_status_q, "Control Mode":self.ctrl_mode_q, "Output 1":self.output_1_q, "Output_2":self.output_2_q, "Platform Temperature (K)":self.temperature_q}
         self.labels_val = []
         self.window=1000
 
@@ -908,12 +912,12 @@ class StrainDisplay:
 
         # define plot primitives
         self.time_vect = np.zeros(self.window)
-        self.strain_vect = queue_read(self.strain)*np.ones(self.window)
-        self.sp_vect = queue_read(self.setpoint)*np.ones(self.window)
-        self.dl_vect = queue_read(self.dl)*np.ones(self.window)
-        self.v1_vect = queue_read(self.voltage_1)*np.ones(self.window)
-        self.v2_vect = queue_read(self.voltage_2)*np.ones(self.window)
-        self.cap_vect = queue_read(self.cap)*np.ones(self.window)
+        self.strain_vect = queue_read(self.strain_q)*np.ones(self.window)
+        self.sp_vect = queue_read(self.setpoint_q)*np.ones(self.window)
+        self.dl_vect = queue_read(self.dl_q)*np.ones(self.window)
+        self.v1_vect = queue_read(self.voltage_1_q)*np.ones(self.window)
+        self.v2_vect = queue_read(self.voltage_2_q)*np.ones(self.window)
+        self.cap_vect = queue_read(self.cap_q)*np.ones(self.window)
         self.line11 = self.p11.plot(self.time_vect, self.strain_vect, pen=pg.mkPen('orange', width=4))
         self.line11_sp = self.p11.plot(self.time_vect, self.sp_vect, pen=pg.mkPen('black', width=4, style=QtCore.Qt.DashLine))
         self.line12 = self.p12.plot(self.time_vect, self.dl_vect, pen=pg.mkPen('blue', width=4))
@@ -990,7 +994,7 @@ class StrainDisplay:
 
         self.j = (self.j + 1) % self.window
 
-        if queue_read(self.run) == False:
+        if queue_read(self.run_q) == False:
             print('Shut down display update thread')
             self.app.quit()
 
