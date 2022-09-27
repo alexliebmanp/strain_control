@@ -3,20 +3,22 @@
 
 # Setup
 
-First, this package must be cloned from GitHub, as well as my particular fork of `PyMeasure`, since I have modified a few files. On the command line, run the following
+First, this package must be cloned from GitHub, as well as my (Alex Liebman-Pelaez) particular fork of `PyMeasure`, since I have modified a few files. On the command line, run the following
 
 ```
 git clone git@github.com:alexliebmanp/strain_control.git
 git clone git@github.com:alexliebmanp/pymeasure.git
 ```
 
-In addition, the following packages must be installed with `pip` if they aren't on your system already:
+In addition, the following packages must be installed with `conda` or `pip` if they aren't on your system already:
 
 ```
 simple-pid
 pyvisa
 numpy
 matplotlib
+OrensteinLab_git
+threading
 ```
 
 Lastly, `strain_control` and `PyMeasure` must be added to PYTHONPATH  or to the site-packages folder.
@@ -29,7 +31,7 @@ To initiate the strain control server, edit the configurations as desired (descr
 python strain_server.py
 ```
 
-This will popup a `matplotlib` display. The server starts in a stable initial state with voltage 1 and voltage 2 both set to 0, the strain setpoint set to 0, and no closed-loop control enabled.
+This will popup a Qt display. The server captures whatever the current state of the system is, and no closed-loop control enabled.
 
 To apply a voltage on the PS, enable closed-loop control, change the strain setpoint, modify the PS slew rate, or read off the current value for strain, etc., the user may import `strain_client.py` into any python environment. For example,
 
@@ -48,7 +50,8 @@ sc.get_voltage(1)
 sc.get_strain()
 sc.set_slew_rate(10)
 sc.stop_strain_control()
-sc.set_voltage(1,0)
+sc.set_output(1,1)
+sc.set_voltage(1,10)
 sc.shutdown_server()
 ```
 
@@ -68,12 +71,13 @@ A Razorbill strain cell operates on much the same principle, except that it does
 
 In principle, the voltage can be changed to induce a change in strain, as measured with the capacitor.
 
-Clearly, there is a need to coordinate these two instruments and control for *strain*. This is the job of the `strain_server`. The server runs over a few different threads:
+Clearly, there is a need to coordinate these two instruments and control for *strain*. This is the job of the `strain_server`. The server runs over a few different threads and two processes:
 
-1. main thread - initializes instruments and starts display
+1. main thread - initializes instruments and starts the display process, which launches a graphical display. When the display is closed, it also initiates the shutdown procedure
 2. monitor thread - continuously queries PS and LCR meter to get values for voltage and capacitance, and converts the capacitance to a strain
 3. control thread - when activated, initiates closed-loop control for strain in one of three modes, (1) PID, (2) Set Voltage, and (3) Combined
 4. communications thread - listens for connections from the client and reacts appropriately to incoming messages
+5. logging thread - continuously writes system state values to a log file
 
 The server also includes features for properly and safely applying a voltage to the piezos. In particular, the `MAX_VOLTAGE` and `MIN_VOLTAGE` variables are used to limit the output voltage of the PS to user specified values (as described in the Razorbill manuals).
 
@@ -94,6 +98,8 @@ I=100
 D=0.1
 L0 = 68.68 # initial capacitor spacing    # gap between sensor plates at 0 strain
 L0_SAMP = 68.68                           # sample length at 0 strain
+C_MEASURED_0 = 0.812                      # pF, measured capacitance at 300K and 0V after a zeroing procedure.
+C_0 = 0.808                               # pF, true capacitance at 300K and 0 V.
 
 ### LIMIT OUTPUT VOLTAGE HERE ###
 
@@ -103,8 +109,13 @@ MIN_VOLTAGE = -19 # V
 ### COMMUNICATION SETTINGS ###
 LCR_ADDRESS = None                        # communications addresses.
 PS_ADDRESS = None
+MONTANA_ADDRESS = '10.1.1.15'
+LAKESHORE_ADDRESS = ''
 HOST = 'localhost'
-PORT = 8888
+PORT = 15200
+
+### LOGGING
+LOG_FILENAMEHEAD = r'C:\Users\orens\Google Drive\Shared drives\Orenstein Lab\Data\Strain cell log files'
 ```
 
 Note: it is important that the server be shutdown properly using `shutdown_server()` command as described below. Otherwise, the strain cell system may be left in an unknown or unstable state, potentially leading to a dangerous situation.
