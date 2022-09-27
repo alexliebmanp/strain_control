@@ -760,7 +760,7 @@ class StrainServer:
         if self.strain_monitor_loop.is_alive():
             # print('self.strain_monitor_loop is alive. Thread: '+str(threading.current_thread()))
             self.strain_monitor_loop.stop()
-            # print('After self.strain_monitor_loop.stop(). Thread: '+(threading.current_thread()))
+            # print('After self.strain_monitor_loop.stop(). Thread: '+str(threading.current_thread()))
             self.strain_monitor_loop.join()
             # print('after self.strain_monitor_loop.join(). Thread: '+str(threading.current_thread()))
         self.run.locked_update(False)
