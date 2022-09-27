@@ -59,22 +59,50 @@ The first line after the import generates a `StrainClient` object, whose methods
 
 NOTE: in the current version of this package, the socket communication host and port are hard-coded as `localhost` and `8888` respectively. In principle, the server can live on a remote computer and communication can be carried over a network.
 
-# Strain Server
+# Strain Server and Capacitance Measurement
 
 Most laboratory instruments come equipped with a dedicated control unit. For example, a Lakeshore temperature controller coordinates an applied *voltage* (to a heater) and a measured *resistance* (from a thermometer) to control for *temperature*, a third variable. The control unit runs it's own software to handle changes in temperature and maintain a set temperature. A user will often interact with the control unit (which also acts as a server) via a communications python package (client) to query the controller, change it's state, and read off measured values from buffers.
 
 A Razorbill strain cell operates on much the same principle, except that it does not ship with a control unit that controls for *strain*. Instead, it comes with a power supply and a suggestion for purchasing an LCR meter. The power supply can output a *voltage* across two different channels to each piezo stack in the strain cell, and hence expand or contract the gap between the sample plates. The LCR meter can read a *capacitance* from a sensor. Based on a calibration curve and an initial sample length `L0_SMAP`, the capacitance can be related to the strain as follows:
 
 ```math
-\sqrt(3)
+dl = eps0*area/(C_true - C_offset) - l0
 ```
+
+where `C_offset` was determined at the factory to be 0.04 pF and `l0`, the initial gap distance, is 68.68 um. `A` has been calibrated to be 5.95 mm^2. Finally, the strain is given by
+
+```math
+strain = dl/l_0^samp,
+```
+
+where `l_0^samp` is the sample length at 0 strain. From here, further corrections to the sample strain may be considered by incorporating the various extrinsic contributions to `dl` such as the stretch/compression of the sample plates and Stycast epoxy holding the sample into the mounts.
+
+This equation uses what we call the "true" capacitance `C_true` to back out the gap distance, and hence the sample strain. In order to obtain the "true" capacitance, the system must be calibrated to subtract off contributions from (1) parasitic capacitance in coaxial cables, and (2) temperature dependent offset.
+
+The capacitance can be thought of as comprising four parts:
+
+    C_measured(V, T) = deltaC(V) + C_0 + C_parasitic + C_temp(T),
+    
+where,
+
+    C_true = deltaC(V) + C_0 = C_measured(V,T) - C_parasitic - C_temp(T)
+    
+The "true" capacitance we want is the 0 strain capacitance `C_0` (0.808 pF as determined at the factor) plus the voltage induced change `deltaC(V)`. The parasitic capacitance can be obtained by doing a proper "zeroing" procedure at room temperature whereby both channels are set to 200V with no sample mounted and the system is allowed to relax back to 0 V slowly, yielding `C_measured(0,300)`. Subtracting off the known "true" value at 0 volts we get the parasitic, ie since we know C_0 = 0.808 pF from factory calibrations,
+
+    C_parasitic = C_measured(0,300) - 0.808 pF.
+
+The temperature induced offset should also be calculated as
+
+    C_temp(T) = C_measured(0,T) - C_measured(0,300)
+
+where `C_measured(0,T)` is measured with a titanium dummy sample mounted into the cell. All of these calibrations are hard-coded into the `strain_server` both in the configuration settings and as a temperature calibration lookup table. They can be checked periodically if necessary.
 
 In principle, the voltage can be changed to induce a change in strain, as measured with the capacitor.
 
 Clearly, there is a need to coordinate these two instruments and control for *strain*. This is the job of the `strain_server`. The server runs over a few different threads and two processes:
 
 1. main thread - initializes instruments and starts the display process, which launches a graphical display. When the display is closed, it also initiates the shutdown procedure
-2. monitor thread - continuously queries PS and LCR meter to get values for voltage and capacitance, and converts the capacitance to a strain
+2. monitor thread - continuously queries PS, LCR meter, and Lakeshore temperature controller to get values for voltage and capacitance, and converts the capacitance to a strain, taking into account a temperature calibration
 3. control thread - when activated, initiates closed-loop control for strain in one of three modes, (1) PID, (2) Set Voltage, and (3) Combined
 4. communications thread - listens for connections from the client and reacts appropriately to incoming messages
 5. logging thread - continuously writes system state values to a log file
