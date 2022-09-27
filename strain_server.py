@@ -98,7 +98,7 @@ class StrainServer:
         self.lcr = lcr
         self.ps = ps
         self.cryo = cryo
-        self.serversocket = s
+        self.serversocket = serversocket
         self.l0 = l0
         self.l0_samp = LockedVar(l0_samp)
         self.logging_interval = LockedVar(logging_interval)
@@ -273,7 +273,7 @@ class StrainServer:
                         decoded_message = message.decode('utf8')
                         # print(message, decoded_message)
                         try:
-                            response = self.parse_message(decoded_message) # this is a race condition! --elizabeth
+                            response = self.parse_message(decoded_message)
                         except:
                             error_msg = 'Error: unable to parse message: '+str(message)
                             print(error_msg)
@@ -310,9 +310,9 @@ class StrainServer:
         # print('in filelog()')
         # print(current_thread)
         with open(self.filepath.locked_read(), 'a') as f:
-            f.write(f'Time\tStrain\tPID Setpoint\tCapacitance (pF)\tdl (um)\tSample Length(um)\tVoltage 1 (V)\tVoltage 2 (V)\tOutput 1\tOutput 2\tP\tI\tD\tMin Voltage 1\tMin Voltage 2\tMax Voltage 1\tMax Voltage 2\tSlew Rate\tMode\tStatus\tRun\tTemperature (K)\n')
+            f.write(f'Time\tTemperature (K)\tStrain\tCapacitance (pF)\tdl (um)\tSample Length(um)\tVoltage 1 (V)\tVoltage 2 (V)\tSlew Rate\tOutput 1\tOutput 2\tPID Setpoint\tP\tI\tD\tMin Voltage 1\tMin Voltage 2\tMax Voltage 1\tMax Voltage 2\tMode\tStatus\tRun\n')
         while current_thread.stopped() == False:
-            params = [self.strain, self.setpoint, self.cap, self.dl, self.l0_samp, self.voltage_1, self.voltage_2, self.output_1, self.output_2, self.p, self.i, self.d, self.min_voltage_1, self.min_voltage_2, self.max_voltage_1, self.max_voltage_2, self.slew_rate, self.ctrl_mode, self.ctrl_status, self.run, self.temperature]
+            params = [self.temperature, self.strain, self.cap, self.dl, self.l0_samp, self.voltage_1, self.voltage_2, self.slew_rate, self.output_1, self.output_2, self.setpoint, self.p, self.i, self.d, self.min_voltage_1, self.min_voltage_2, self.max_voltage_1, self.max_voltage_2, self.ctrl_mode, self.ctrl_status, self.run]
             with open(self.filepath.locked_read(), 'a') as f:
                 f.write(str(datetime.datetime.now())+'\t')
                 allbutlast = ''.join(str(logval.locked_read())+'\t' for logval in params[:-1])
@@ -726,7 +726,7 @@ class StrainServer:
             response = '1'
         return response
 
-    def shutdown(self, mode):
+    def shutdown(self, mode=1):
         '''
         Initiates shutdown of server.
 
@@ -760,11 +760,20 @@ class StrainServer:
         if self.strain_monitor_loop.is_alive():
             # print('self.strain_monitor_loop is alive. Thread: '+str(threading.current_thread()))
             self.strain_monitor_loop.stop()
-            # print('After self.strain_monitor_loop.stop(). Thread: '+(threading.current_thread()))
+            # print('After self.strain_monitor_loop.stop(). Thread: '+str(threading.current_thread()))
             self.strain_monitor_loop.join()
             # print('after self.strain_monitor_loop.join(). Thread: '+str(threading.current_thread()))
-        self.run.locked_update(False)
+        if self.sim.locked_read()==False:
+            if self.filelog_loop.is_alive():
+                self.filelog_loop.stop()
+                self.filelog_loop.join()
         queue_write(self.run_q, False)
+        self.run.locked_update(False)
+
+    def shutdown_from_main(self):
+        from strain_control.strain_client import StrainClient
+        sc = StrainClient()
+        sc.shutdown_server()
 
     def do_main_loop(self):
         '''
@@ -831,18 +840,8 @@ class StrainServer:
         self.display_process.join()
         # print('After self.display_process.join(). Thread: '+str(threading.current_thread()))
 
-        # join comm loop if it hasn't already been stopped. There is an issue here because unless the program is shut down by a comms event, the comms loop will be hung up listening...hmmm
-        if self.comms_loop.is_alive():
-            # print('self.comms_loop is alive in do_main_loop(). Thread: '+str(threading.current_thread()))
-            self.comms_loop.stop()
-            # print('After self.comms_loop.stop(). Thread: '+str(threading.current_thread()))
-            self.comms_loop.join()
-            # print('After self.comms_loop.join(). Thread: '+str(threading.current_thread()))
-
-        if self.sim.locked_read()==False:
-            if self.filelog_loop.is_alive():
-                self.filelog_loop.stop()
-                self.filelog_loop.join()
+        if self.run.locked_read()==True:
+            self.shutdown_from_main()
 
         print('Strain server shutdown complete')
 
