@@ -44,7 +44,7 @@ from pyqtgraph import QtCore, QtWidgets
 ##########################
 global SIM, STARTING_SETPOINT, SLEW_RATE, P, I, D, L0, MAX_VOLTAGE, MIN_VOLTAGE, HOST, PORT, LCR_ADDRESS, PS_ADDRESS, LOG_FILENAMEHEAD
 
-SIM=True
+SIM=False
 STARTING_SETPOINT=0
 SLEW_RATE=0.5
 P=100
@@ -979,7 +979,7 @@ class StrainDisplay:
         #self.p12.autoRange()
         # self.p21.autoRange()
         # self.p22.autoRange()
-        t_lower, t_upper = self.find_axes_limits(np.min(self.time_vect), np.max(self.time_vect))
+        t_lower, t_upper = np.min(self.time_vect), np.max(self.time_vect)
         s_lower, s_upper = self.find_axes_limits(min(np.min(self.strain_vect), np.min(self.sp_vect)), max(np.max(self.sp_vect), np.max(self.strain_vect)))
         dl_lower, dl_upper = self.find_axes_limits(np.min(self.dl_vect), np.max(self.dl_vect))
         v1_lower, v1_upper = self.find_axes_limits(np.min(self.v1_vect), np.max(self.v1_vect))
