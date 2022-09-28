@@ -977,12 +977,12 @@ class StrainDisplay:
         # update axis limits
         #self.p11.autoRange()
         #self.p12.autoRange()
-        #self.p21.autoRange()
-        #self.p22.autoRange()
+        # self.p21.autoRange()
+        # self.p22.autoRange()
         t_lower, t_upper = self.find_axes_limits(np.min(self.time_vect), np.max(self.time_vect))
         s_lower, s_upper = self.find_axes_limits(min(np.min(self.strain_vect), np.min(self.sp_vect)), max(np.max(self.sp_vect), np.max(self.strain_vect)))
         dl_lower, dl_upper = self.find_axes_limits(np.min(self.dl_vect), np.max(self.dl_vect))
-        v1_lower, v1_upper = self.find_axes_limits(np.min(self.v1_vect),np.max(self.v1_vect))
+        v1_lower, v1_upper = self.find_axes_limits(np.min(self.v1_vect), np.max(self.v1_vect))
         v2_lower, v2_upper = self.find_axes_limits(np.min(self.v2_vect), np.max(self.v2_vect))
         for p in [self.p11, self.p12, self.p21, self.p22]:
             p.setXRange(t_lower, t_upper)
@@ -1024,6 +1024,9 @@ class StrainDisplay:
             upper_valid = 0
         lower_valid = lower_valid - np.abs(lower_valid)*fraction
         upper_valid = upper_valid + np.abs(upper_valid)*fraction
+        if lower_valid == 0 and upper_valid == 0:
+            lower_valid = -0.1
+            upper_valid = 0.1
         return lower_valid, upper_valid
 
 if __name__=='__main__':
