@@ -38,6 +38,7 @@ import socket
 import re
 import pyqtgraph as pg
 from pyqtgraph import QtCore, QtWidgets
+import os
 
 ##########################
 ### USER SETTINGS HERE ###
@@ -50,11 +51,14 @@ SLEW_RATE=0.5
 P=100
 I=100
 D=0.1
-L0 = 68.68 # initial capacitor spacing
 L0_SAMP = 68.68
-C_MEASURED_0 = 0.812 # pF, measured capacitance at 300K and 0V after a zeroing procedure. (Used to be 0.824)
-C_0 = 0.808 # pF, true capacitance at 300K and 0 V.
+
+### Calibrations
+L0 = 68.68 # initial capacitor spacing
 C_OFFSET = 0.04 # pf, offset specified in factory calibration
+C_0 = 0.808 # pF, true capacitance at 300K and 0 V.
+C_MEASURED_0 = 0.812 # pF, measured capacitance at 300K and 0V after a zeroing procedure. Used for calculating parasitic capacitance, C_parasitic = C_MEASURED_0 - C_0
+TEMPERATURE_CALIBRATION_FILE = os.path.dirname(os.path.realpath(__file__))+'/temperature_calibration.dat' # file should have a header and first column is platform temperature, second column is lakeshore temperature, and third column is capacitance in pF.
 
 ### LIMIT OUTPUT VOLTAGE HERE ###
 MAX_VOLTAGE = 5#119 # V
@@ -96,6 +100,9 @@ class StrainServer:
 
         returns: class instance object
         '''
+        temp_calibration = np.transpose(np.genfromtxt(TEMPERATURE_CALIBRATION_FILE, skip_header=1))
+        sort_indx = np.argsort(temp_calibration[1,:])
+        self.temp_calibration = np.asarray([temp_calibration[i, sort_indx] for i in [0,1,2]])
         self.lcr = lcr
         self.ps = ps
         self.cryo = cryo
@@ -547,7 +554,7 @@ class StrainServer:
         strain = dl/self.l0_samp.locked_read()
         return strain, cap, imaginary_impedance, dl
 
-    def capacitance_to_dl(self, capacitance_measured):
+    def capacitance_to_dl(self, cap_measured):
         '''
         helper function that returns change in gap between sample plates from initial gap (dl = l - l0) given a capacitance reading based on the CS130 capacitor calibration.
 
@@ -567,6 +574,12 @@ class StrainServer:
 
         C_temp(T) = C_measured(0,T) - C_measured(0,300)
 
+        This can be neatly summarized as
+
+        C_true = C_measured(V, T) - (C_measured(0, T) - C_0),
+
+        taken that C_measured(0,300) = C_measured(0,300) (ie that the caibration file agrees with the zeroing procedure such that the parasitics are incorpated in the temperature dependence - this is something that should be checked manually)
+
         args:
             - capacitance(float):         capacitance in pF
 
@@ -577,29 +590,24 @@ class StrainServer:
         area = 5.95e6 # um^2
         eps0 = 8.854e-6 # pF/um - vacuum permitivity
         cap_offset = C_OFFSET
-        capacitance_parasitic = C_MEASURED_0 - C_0
-        capacitance_temp = self.capacitance_temperature_offset(self.temperature.locked_read())
-        capacitance_true = capacitance_measured - capacitance_parasitic - capacitance_temp
+        cap_correction = self.capacitance_temperature_parasitic_correction(self.temperature.locked_read())
+        cap_true = cap_measured - (cap_correction - C_0)
         l0 = self.l0 # um
-        dl = eps0*area/(capacitance_true - cap_offset) - l0 # um
+        dl = eps0*area/(cap_true - cap_offset) - l0 # um
         return dl
 
-    def capacitance_temperature_offset(self, temperature):
+    def capacitance_temperature_parasitic_correction(self, temperature):
         '''
-        Calculate the temperature induced offset to capacitance in pF.
+        Calculate C_measured(0,T) from calibration file.
 
         args:
             - temperature(float):       temperature in K
 
         returns:
             - offset(float):            capacitance offset, ie
-                                        C_measured(0,temp) - C_measured(0,300)
+                                        C_measured(0,temp)
         '''
-
-        c_measured0 = C_MEASURED_0
-        c_measuredT = c_measured0 # change to reflect to calibartion curve. may need to find a good way to interpolate data
-
-        return c_measuredT - c_measured0
+        return np.interp(temperature, self.temp_calibration[1,:], self.temp_calibration[2,:])
 
     def strain_to_voltage(self, strain):
         '''
