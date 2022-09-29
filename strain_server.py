@@ -54,6 +54,7 @@ L0 = 68.68 # initial capacitor spacing
 L0_SAMP = 68.68
 C_MEASURED_0 = 0.812 # pF, measured capacitance at 300K and 0V after a zeroing procedure. (Used to be 0.824)
 C_0 = 0.808 # pF, true capacitance at 300K and 0 V.
+C_OFFSET = 0.04 # pf, offset specified in factory calibration
 
 ### LIMIT OUTPUT VOLTAGE HERE ###
 MAX_VOLTAGE = 5#119 # V
@@ -575,11 +576,11 @@ class StrainServer:
         # capacitor specifications
         area = 5.95e6 # um^2
         eps0 = 8.854e-6 # pF/um - vacuum permitivity
+        cap_offset = C_OFFSET
         capacitance_parasitic = C_MEASURED_0 - C_0
         capacitance_temp = self.capacitance_temperature_offset(self.temperature.locked_read())
         capacitance_true = capacitance_measured - capacitance_parasitic - capacitance_temp
         l0 = self.l0 # um
-        cap_offset = 0.04 # pf - this appears in the equation for finding dl from the true capactiance.
         dl = eps0*area/(capacitance_true - cap_offset) - l0 # um
         return dl
 
@@ -1036,7 +1037,7 @@ if __name__=='__main__':
 
     if SIM==True:
 
-        lcr = SimulatedLCR(0.808)
+        lcr = SimulatedLCR(1e-12*(C_MEASURED_0))
         ps = SimulatedPS(lcr)
         cryo = SimulatedMontana()
 
