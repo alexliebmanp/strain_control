@@ -73,7 +73,7 @@ HOST = 'localhost'
 PORT = 15200
 
 ### LOGGING
-LOG_FILENAMEHEAD = r'C:\Users\orens\Google Drive\Shared drives\Orenstein Lab\Data\Strain cell log files'
+LOG_FILENAMEHEAD = r'C:\Users\orens\OneDrive\Documents\Strain cell log files'
 
 ###########################
 ###########################
