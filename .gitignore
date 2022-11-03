@@ -3,7 +3,7 @@
 
 # ignore ALL files in ANY directory named..
 __pycache__/
-C:\Users\orens\OneDrive\Documents\Strain cell log files\
+C:\Users\orens\OneDrive\Documents\Strain cell log files\*
 
 
 # ignore attocube handle file
