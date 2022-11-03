@@ -2,6 +2,7 @@
 Strain client indended to be run from jupyter notebook.
 '''
 import socket
+import time
 
 ##########################
 ### USER SETTINGS HERE ###
@@ -49,6 +50,8 @@ class StrainClient:
                 response = s.recv(1024)
             except:
                 raise RuntimeError('unable to recieve response from strain server.')
+
+        time.sleep(0.1)
 
         #print(f'Received: {response}')
         return response.decode('utf8')

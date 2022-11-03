@@ -146,9 +146,9 @@ class StrainServer:
         '''
         Sets initial setting and paramters for both LCR meter and power supply.
         '''
-        self.set_slew_rate(SLEW_RATE)
-        self.set_output(1,0)
-        self.set_output(2,0)
+        #self.set_slew_rate(SLEW_RATE)
+        #self.set_output(1,0)
+        #self.set_output(2,0)
         if self.sim.locked_read()==False:
             self.lcr.mode = "CPD"
             self.lcr.frequency = 3e5 # 300kHz
@@ -847,9 +847,9 @@ class StrainServer:
         # print('After self.comms_loop.start(). Thread: '+str(threading.current_thread()))
 
         # write log data to file only when real (not simulated) data is being acquired
-        if self.sim.locked_read()==False:
-            self.filelog_loop = StoppableThread(target=self.filelog, args=(self.logging_interval.locked_read(),))
-            self.filelog_loop.start()
+        #if self.sim.locked_read()==False:
+        self.filelog_loop = StoppableThread(target=self.filelog, args=(self.logging_interval.locked_read(),))
+        self.filelog_loop.start()
 
         # infinite loop display
         display = StrainDisplay(queues)
