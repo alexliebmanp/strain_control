@@ -149,6 +149,19 @@ class StrainClient:
         voltage = float(self.transmit(message))
         return voltage
 
+    def get_ps(self):
+        '''
+        reads total voltage on power supply.
+
+        args: None
+
+        returns:
+            - voltage(float):
+        '''
+        message = 'PS:?'
+        voltage = float(self.transmit(message))
+        return voltage
+
     def set_setpoint(self, new_setpoint):
         '''
         change target strain setpoint of control loop.
@@ -195,6 +208,21 @@ class StrainClient:
         if not(channel==1 or channel==2):
             raise ValueError('Invalid power supply voltage channel, please choose either 1 or 2.')
         message = 'OUT'+str(channel)+':?'
+        response = self.transmit(message)
+        return response
+
+    def set_ps(self, voltage):
+        '''
+        sets ps voltage as given by set_ps()
+
+        args:
+            - voltage(float):   voltage to set
+
+        returns:
+            - response:         '1' if successful
+        '''
+
+        message = f'PS:{voltage}'
         response = self.transmit(message)
         return response
 

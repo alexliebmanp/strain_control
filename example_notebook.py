@@ -19,6 +19,8 @@ sc.set_voltage_limits(1, -5,5)
 sc.set_pid(100,100,0.1)
 sc.set_sample_l0(68)
 sc.stop_strain_control()
+sc.set_ps(-20)
+sc.get_ps()
 sc.shutdown_server(1)
 
 import re

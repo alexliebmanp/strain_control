@@ -3,8 +3,6 @@
 
 # ignore ALL files in ANY directory named..
 __pycache__/
-C:\Users\orens\OneDrive\Documents\Strain cell log files\*
-
 
 # ignore attocube handle file
 attocube_handle
@@ -14,4 +12,3 @@ Configuration.txt
 
 # other files that pop up:
 .DS_Store
-example_notebook.py

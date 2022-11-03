@@ -7,11 +7,12 @@ SOME IMPORTANT SAFETY NOTES:
 - include proper voltage limits for the power supply (ideally as a function of temperature with some backups safety to ensure it defaults to lowest limits)
 - wire both the power supply and the capacitor correctly by rereading appropriate sections in the manual
 
-To Do:
-(1) add logging
-(2) read temperature on lakeshore
 
-As time allows:
+Correct Wiring:
+CHANNEL 1: Tensions stack
+CHANNEL 2: Comperession stack
+
+To do as time allows:
 (3) Change global variables to configuration file.
 (4) fix PID and how it interacts with rough ramp
 (5) fix set_strain() - add some feedback control to rough ramp, or an option to do so
@@ -39,13 +40,14 @@ import re
 import pyqtgraph as pg
 from pyqtgraph import QtCore, QtWidgets
 import os
+import traceback
 
 ##########################
 ### USER SETTINGS HERE ###
 ##########################
 global SIM, STARTING_SETPOINT, SLEW_RATE, P, I, D, L0, MAX_VOLTAGE, MIN_VOLTAGE, HOST, PORT, LCR_ADDRESS, PS_ADDRESS, LOG_FILENAMEHEAD
 
-SIM=False
+SIM=True
 STARTING_SETPOINT=0
 SLEW_RATE=0.5
 P=100
@@ -282,9 +284,10 @@ class StrainServer:
                         # print(message, decoded_message)
                         try:
                             response = self.parse_message(decoded_message)
-                        except:
+                        except Exception:
                             error_msg = 'Error: unable to parse message: '+str(message)
                             print(error_msg)
+                            traceback.print_exc()
                             conn.sendall(error_msg.encode('utf8'))
                             break
                         try:
@@ -391,12 +394,44 @@ class StrainServer:
             self.ps_write(new_voltage)
             time.sleep(0.01)
 
-    def ps_write(self, voltage):
+    def set_ps(self, voltage):
         '''
-        update both channels of power supply to new voltage. change in future to coordinate the voltages in the best way (ie, not just same voltage on each channel, maybe we just pick both?) - really, I think this function may eventually use some other data such as direction of applied voltage or setpoint-strain to determine which channel should be energized corresponding to compression or tension.
+        update both channels of power supply to new voltage. change in future to coordinate the voltages in the best way. Positive voltage is taken to be tensioning and negative voltage compression. Voltage is applied equally to each stack up to respective negative and positive limits, and an remaining voltage that needs accounting for can be applied to whichever stack still has room within limits.
+
+        Basically find the best way to split total voltage into v1 and v2 given:
+
+        total_voltage = v1 - v2
+
+        ASSUMES THAT CHANNEL 1 IS TENSION AND CHANNEL 2 IS COMPRESSIVE. IT IS THE USERS RESPONSIBILITY TO ENSURE THE WIRING IS CORRECT.
         '''
-        self.set_voltage(1, voltage)
-        #self.set_voltage(2, voltage)
+        if voltage < 0:
+            v1 = -abs(voltage/2)
+            max1 = self.max_voltage_1.locked_read()
+            min1 = self.min_voltage_1.locked_read()
+            if v1 > max1:
+                v1 = max1
+            elif v1 < min1:
+                v1 = min1
+            v2 = v1 - voltage
+        else:
+            v2 = -abs(voltage/2)
+            max2 = self.max_voltage_2.locked_read()
+            min2 = self.min_voltage_2.locked_read()
+            if v2 > max2:
+                v2 = max2
+            elif v2 < min2:
+                v2 = min2
+            v1 = voltage + v2
+
+        self.set_voltage(1, v1)
+        self.set_voltage(2, v2)
+
+    def get_ps(self):
+        '''
+        Returns a measure of total voltage applied, ie, v1 - v2
+        '''
+        total_v = self.get_voltage(1) - self.get_voltage(2)
+        return total_v
 
     def set_voltage(self, channel, voltage):
         '''
@@ -686,10 +721,22 @@ class StrainServer:
             self.setpoint.locked_update(setpoint)
             queue_write(self.setpoint_q, setpoint)
             response = '1'
+        elif message=='PS:?':
+            v = self.get_ps()
+            response = str(v)
+        elif re.match(r'PS:-?[0-9]+[\.]?[0-9]*', message):
+            voltage = float(re.findall(r'-?[0-9]+[\.]?[0-9]*', message)[0])
+            self.set_ps(voltage)
+            response = '1'
         elif re.match(r'VOL[1-2]:\?', message):
             channel = int(re.search(r'[1-2]', message)[0])
             v = self.get_voltage(channel)
             response = str(v)
+        elif re.match(r'VOL[1-2]:-?[0-9]+[\.]?[0-9]*', message):
+            channel = int(re.search(r'[1-2]', message)[0])
+            voltage = float(re.findall(r'-?[0-9]+[\.]?[0-9]*', message)[1])
+            self.set_voltage(channel, voltage) # change ps_write to specify channel as well.
+            response = '1'
         elif re.match(r'OUT[1-2]:[0-1]', message):
             channel = int(re.search(r'[1-2]', message)[0])
             state = int(re.search(r':[0-1]', message)[0][1])
@@ -699,11 +746,6 @@ class StrainServer:
             channel = int(re.search(r'[1-2]', message)[0])
             state = self.get_output(channel)
             response = str(state)
-        elif re.match(r'VOL[1-2]:-?[0-9]+[\.]?[0-9]*', message):
-            channel = int(re.search(r'[1-2]', message)[0])
-            voltage = float(re.findall(r'-?[0-9]+[\.]?[0-9]*', message)[1])
-            self.set_voltage(channel, voltage) # change ps_write to specify channel as well.
-            response = '1'
         elif re.match(r'VLIMS[1-2]:-?[0-9]+[\.]?[0-9]*,-?[0-9]+[\.]?[0-9]*',message):
             channel = int(re.search(r'[1-2]', message)[0])
             min, max = [float(i) for i in re.findall(r'-?[0-9]+[\.]?[0-9]*', message)[1:]]
@@ -847,9 +889,9 @@ class StrainServer:
         # print('After self.comms_loop.start(). Thread: '+str(threading.current_thread()))
 
         # write log data to file only when real (not simulated) data is being acquired
-        #if self.sim.locked_read()==False:
-        self.filelog_loop = StoppableThread(target=self.filelog, args=(self.logging_interval.locked_read(),))
-        self.filelog_loop.start()
+        if self.sim.locked_read()==False:
+            self.filelog_loop = StoppableThread(target=self.filelog, args=(self.logging_interval.locked_read(),))
+            self.filelog_loop.start()
 
         # infinite loop display
         display = StrainDisplay(queues)
