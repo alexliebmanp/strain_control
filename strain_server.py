@@ -73,7 +73,7 @@ HOST = 'localhost'
 PORT = 15200
 
 ### LOGGING
-LOG_FILENAMEHEAD = r'C:\Users\orens\Google Drive\Shared drives\Orenstein Lab\Data\Strain cell log files'
+LOG_FILENAMEHEAD = r'C:\Users\orens\OneDrive\Documents\Strain cell log files'
 
 ###########################
 ###########################
@@ -589,11 +589,22 @@ class StrainServer:
         # capacitor specifications
         area = 5.95e6 # um^2
         eps0 = 8.854e-6 # pF/um - vacuum permitivity
+        # eps0 = 8.8655e-6 # pF/um calculated from values in razorbill manual
         cap_offset = C_OFFSET
         cap_correction = self.capacitance_temperature_parasitic_correction(self.temperature.locked_read())
-        cap_true = cap_measured - (cap_correction - C_0)
-        l0 = self.l0 # um
-        dl = eps0*area/(cap_true - cap_offset) - l0 # um
+        cap_rt = self.capacitance_temperature_parasitic_correction(295.599)
+        cap_eu_rt = 0.8092 # pF, EuIn2As2 cap at 295.599K from cooldown log file
+        cap_rt_diff = cap_eu_rt - cap_rt
+        # cap_true = cap_measured - (cap_correction - C_0)
+        # l0 = self.l0 # um
+        # dl = eps0*area/(cap_true - cap_offset) -  l0 # um
+        # return dl
+        # print(cap_measured, cap_correction, cap_rt)
+        # print(cap_correction + cap_rt_diff)
+        l0 = (eps0*area)/(cap_correction - cap_offset)
+        # l0 = (eps0*area)/(0.808 - cap_offset)
+        dl = (eps0*area)/(cap_measured - cap_offset) - l0
+        # print(l0, (eps0*area)/(cap_measured - cap_offset))
         return dl
 
     def capacitance_temperature_parasitic_correction(self, temperature):
