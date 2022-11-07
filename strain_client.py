@@ -78,6 +78,28 @@ class StrainClient:
         response = self.transmit(message)
         return response
 
+    def start_cap_control(self, mode='PID'):
+        '''
+        initiate control loop on strain server.
+
+        returns:
+            - response:     '1' if successful
+
+        kwargs:
+            - mode(string):     'PID', 'Set Voltage', or 'Combined'
+        '''
+        if mode not in ['PID', 'Set Cap', 'Combined']:
+            raise ValueError('invalid control mode, please input PID, Set Cap, or Combine.')
+        if mode=='PID':
+            code=1
+        elif mode=='Set Cap':
+            code=2
+        elif mode=='Combined':
+            code=3
+        message = 'SCAPCTRL:'+str(code)
+        response = self.transmit(message)
+        return response
+
     def stop_strain_control(self):
         '''
         stop control loop on strain server.
@@ -87,6 +109,18 @@ class StrainClient:
         '''
 
         message = 'ECTRL:'
+        response = self.transmit(message)
+        return response
+
+    def stop_cap_control(self):
+        '''
+        stop control loop on strain server.
+
+        returns:
+            - response:     '1' if successful
+        '''
+
+        message = 'ECAPCTRL:'
         response = self.transmit(message)
         return response
 

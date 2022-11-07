@@ -117,8 +117,8 @@ class StrainServer:
         self.temperature = LockedVar(temperature)
         strain, cap, imaginary_impedance, dl = self.get_strain()
         self.strain = LockedVar(strain)
-        self.setpoint = LockedVar(setpoint)
         self.cap = LockedVar(cap)
+        self.setpoint = LockedVar(cap)
         self.imaginary_impedance = LockedVar(imaginary_impedance)
         self.dl = LockedVar(dl)
         v1, v2 = self.get_voltage(1), self.get_voltage(2)
@@ -216,6 +216,76 @@ class StrainServer:
                     print('Setting strain with fixed voltage')
                     self.set_strain(current_setpoint)
                     print('Strain achieved, starting PID control')
+                    pid_loop.start()
+
+            print('Stopping PID control')
+            pid_loop.stop()
+            pid_loop.join()
+
+        self.ctrl_status.locked_update(0)
+        queue_write(self.ctrl_status_q, 0)
+        print('Shut down control thread')
+
+    def start_cap_control(self, mode):
+        '''
+        High level handling of capacitance control. For now, sets new cap value by first slowly ramping voltage to approximate voltage and then maintaining strain with a restricted PID loop.
+
+        args:
+            - mode(int):     1:'PID, 2:'Set Capacitance', or 3:'Combined'
+
+        returns: None
+        '''
+
+        current_setpoint = self.setpoint.locked_read()
+        self.ctrl_status.locked_update(1)
+        queue_write(self.ctrl_status_q, 1)
+        if mode==1:
+            pid_loop = StoppableThread(target=self.start_cap_pid, args=(current_setpoint,), kwargs={'limit':False})
+            print('Starting PID control of capacitance')
+            pid_loop.start()
+            current_thread = threading.current_thread()
+            while current_thread.stopped()==False:
+                new_setpoint = self.setpoint.locked_read()
+                current_setpoint = new_setpoint
+                self.cpid.setpoint = current_setpoint
+            print('Stopping PID control')
+            pid_loop.stop()
+            pid_loop.join()
+
+        elif mode==2:
+
+            print('Starting constant capacitance control')
+            self.set_cap(current_setpoint)
+
+            current_thread = threading.current_thread()
+            while current_thread.stopped()==False:
+                new_setpoint = self.setpoint.locked_read()
+                if new_setpoint != current_setpoint:
+                    current_setpoint = new_setpoint
+                    self.set_cap(current_setpoint)
+            print('Stopping constant capacitance control')
+
+        elif mode==3:
+
+            pid_loop = StoppableThread(target=self.start_cap_pid, args=(current_setpoint,), kwargs={'limit':False})
+            print('Setting capacitance')
+            self.set_cap(current_setpoint)
+            print('Rough capacitance achieved, starting PID control')
+            pid_loop.start()
+
+            current_thread = threading.current_thread()
+            while current_thread.stopped()==False:
+                new_setpoint = self.setpoint.locked_read()
+                if new_setpoint != current_setpoint:
+                    current_setpoint = new_setpoint
+                    if pid_loop.is_alive():
+                        pid_loop.stop()
+                        pid_loop.join()
+                        print('Stopping PID control')
+                    pid_loop = StoppableThread(target=self.start_cap_pid, args=(current_setpoint,), kwargs={'limit':False})
+                    print('Setting capacitance')
+                    self.set_cap(current_setpoint)
+                    print('Rough capacitance achieved, starting PID control')
                     pid_loop.start()
 
             print('Stopping PID control')
@@ -373,19 +443,19 @@ class StrainServer:
         returns: None
 
         '''
+        
         cap_current = self.cap.locked_read()
         ps_current = self.get_ps()
         ps_increment = self.slew_rate.locked_read()
         cap_tol=0.0005
         direction = -(cap_setpoint - cap_current)/abs(cap_setpoint - cap_current)
         ps_val = ps_current
-        err = abs(cap_setpoint - cap_current)
-        while err > cap_tol:
+        while abs(cap_setpoint - self.cap.locked_read()) > cap_tol:
             self.set_ps(ps_val)
             time.sleep(1)
             cap_current = self.cap.locked_read()
+            ps_increment = self.slew_rate.locked_read()
             direction = -(cap_setpoint - cap_current)/abs(cap_setpoint - cap_current)
-            err = abs(cap_setpoint - cap_current)
             ps_val = ps_val + direction*ps_increment
 
     def start_pid(self, setpoint, limit=False):
@@ -401,10 +471,8 @@ class StrainServer:
             - limit(bool):
         '''
         if limit==True:
-            v1, v2 = self.ps_read()
-            v0 = v1
+            v0 = self.get_ps()
 
-        self.output_limits = (MIN_VOLTAGE, MAX_VOLTAGE)
         self.pid.setpoint = setpoint
         current_thread = threading.current_thread()
         while current_thread.stopped()==False:
@@ -416,7 +484,36 @@ class StrainServer:
                     new_voltage = v0 + 5*(dv/abs(dv))
             #print(new_voltage)
             # set the new output and get current value
-            self.ps_write(new_voltage)
+            self.set_ps(new_voltage)
+            time.sleep(0.01)
+
+    def start_cap_pid(self, setpoint, limit=False):
+        '''
+        Start PID loop to control strain.
+
+        args:
+            - setpoint(float):      PID setpoint. We take this as an explicit parameter to avoid possible conflicts and make this function cleaner.
+
+        returns: None
+
+        kwargs:
+            - limit(bool):
+        '''
+        if limit==True:
+            v0 = self.get_ps()
+
+        self.pid.setpoint = setpoint
+        current_thread = threading.current_thread()
+        while current_thread.stopped()==False:
+            # compute new output given current strain
+            new_voltage = self.pid(self.cap.locked_read())
+            if limit==True:
+                dv = new_voltage - v0
+                if abs(dv) > 5:
+                    new_voltage = v0 + 5*(dv/abs(dv))
+            #print(new_voltage)
+            # set the new output and get current value
+            self.set_ps(new_voltage)
             time.sleep(0.01)
 
     def set_ps(self, voltage):
@@ -727,11 +824,40 @@ class StrainServer:
                 self.strain_control_loop = StoppableThread(target=self.start_strain_control, args=(mode,))
                 self.strain_control_loop.start()
             response = '1'
+        if re.match(r'SCAPCTRL:[1-3]', message):
+            mode = int(re.search(r'[1-3]', message)[0])
+            if self.cap_control_loop.is_alive():
+                current_mode = self.ctrl_mode.locked_read()
+                if mode!=current_mode:
+                    print(f'Stopping control thread in mode {current_mode} and restarting in mode {mode}')
+                    self.ctrl_mode.locked_update(mode)
+                    queue_write(self.ctrl_mode_q, mode)
+                    self.cap_control_loop.stop()
+                    self.cap_control_loop.join()
+                    self.cap_control_loop = StoppableThread(target=self.start_cap_control, args=(mode,))
+                    self.strain_cap_loop.start()
+                else:
+                    print(f'Control thread in mode {mode} already in progress, no action taken')
+            else:
+                print(f'Starting control thread in mode {mode}')
+                self.ctrl_mode.locked_update(mode)
+                queue_write(self.ctrl_mode_q, mode)
+                self.cap_control_loop = StoppableThread(target=self.start_cap_control, args=(mode,))
+                self.cap_control_loop.start()
+            response = '1'
         elif message == 'ECTRL:':
             if self.strain_control_loop.is_alive():
                 v1, v2 = self.get_voltage(1), self.get_voltage(2)
                 self.strain_control_loop.stop()
                 self.strain_control_loop.join()
+                self.set_voltage(1,v1)
+                self.set_voltage(1,v2)
+            response = '1'
+        elif message == 'ECAPCTRL:':
+            if self.cap_control_loop.is_alive():
+                v1, v2 = self.get_voltage(1), self.get_voltage(2)
+                self.cap_control_loop.stop()
+                self.cap_control_loop.join()
                 self.set_voltage(1,v1)
                 self.set_voltage(1,v2)
             response = '1'
@@ -797,8 +923,8 @@ class StrainServer:
             self.l0_samp.locked_update(samp_l0)
             queue_write(self.l0_samp_q, samp_l0)
             response='1'
-        elif re.match(r'PID:[0-9]+[\.]?[0-9]*,[0-9]+[\.]?[0-9]*,[0-9]+[\.]?[0-9]*', message):
-            p, i, d = [float(j) for j in re.findall(r'[0-9]+[\.]?[0-9]*', message)]
+        elif re.match(r'PID:-?[0-9]+[\.]?[0-9]*,-?[0-9]+[\.]?[0-9]*,-?[0-9]+[\.]?[0-9]*', message):
+            p, i, d = [float(j) for j in re.findall(r'-?[0-9]+[\.]?[0-9]*', message)]
             self.pid.tunings = (p,i,d)
             self.p.locked_update(p)
             self.i.locked_update(i)
@@ -891,6 +1017,8 @@ class StrainServer:
         slew_rate_q = Queue()
         ctrl_mode_q = Queue()
         ctrl_status_q = Queue()
+        cap_ctrl_mode_q = Queue()
+        cap_ctrl_status_q = Queue()
         run_q = Queue()
         temperature_q = Queue()
         queues = [strain_q, setpoint_q, cap_q, dl_q, l0_samp_q, voltage_1_q, voltage_2_q, output_1_q, output_2_q, p_q, i_q, d_q, min_voltage_1_q, min_voltage_2_q, max_voltage_1_q, max_voltage_2_q, slew_rate_q, ctrl_mode_q, ctrl_status_q, run_q, temperature_q]
@@ -906,8 +1034,9 @@ class StrainServer:
         self.strain_monitor_loop.start()
         # print('After self.strain_monitor_loop.start(). Thread: '+str(threading.current_thread()))
 
-        # create conntrol thread
+        # create control threads
         self.strain_control_loop = StoppableThread(target=self.start_strain_control, args=(self.ctrl_mode.locked_read(),))
+        self.cap_control_loop = StoppableThread(target=self.start_cap_control, args=(self.ctrl_mode.locked_read(),))
         # print('After self.strain_control_loop created. Thread: '+str(threading.current_thread()))
         # why no self.strain_control_loop.start()? --Elizabeth
 
@@ -944,7 +1073,7 @@ class StrainDisplay:
         [self.strain_q, self.setpoint_q, self.cap_q, self.dl_q, self.l0_samp_q, self.voltage_1_q, self.voltage_2_q, self.output_1_q, self.output_2_q, self.p_q, self.i_q, self.d_q, self.min_voltage_1_q, self.min_voltage_2_q, self.max_voltage_1_q, self.max_voltage_2_q, self.slew_rate_q, self.ctrl_mode_q, self.ctrl_status_q, self.run_q, self.temperature_q] = queues
         # setup dictionaries
         self.labels_dict = {"Sample Length (um)":self.l0_samp_q, "Setpoint":self.setpoint_q, "Strain":self.strain_q, "Capacitance (pF)":self.cap_q, "dL (um)":self.dl_q, "Voltage 1 (V)":self.voltage_1_q, "Voltage 2 (V)":self.voltage_2_q, "P":self.p_q, "I":self.i_q, "D":self.d_q, "Voltage 1 Min":self.min_voltage_1_q, "Voltage 1 Max":self.max_voltage_1_q, "Voltage 2 Min":self.min_voltage_2_q, "Voltage 2 Max":self.max_voltage_2_q, "Slew Rate":self.slew_rate_q, "Control Status":self.ctrl_status_q, "Control Mode":self.ctrl_mode_q, "Output 1":self.output_1_q, "Output_2":self.output_2_q, "Platform Temperature (K)":self.temperature_q}
-        self.labels_val = []
+        self.labels_val = {}
         self.window=1000
 
     def start_display(self):
@@ -977,7 +1106,7 @@ class StrainDisplay:
             val = round(float(queue_read(q)),4)
             label_name = QtWidgets.QLabel(f"{name}:")
             label_val = QtWidgets.QLabel(f"{val}")
-            self.labels_val.append(label_val)
+            self.labels_val[name] = label_val
             layout_left.addWidget(label_name, i, 0)
             layout_left.addWidget(label_val, i, 1)
 
@@ -1011,7 +1140,7 @@ class StrainDisplay:
         self.cap_vect = queue_read(self.cap_q)*np.ones(self.window)
         #self.line11 = self.p11.plot(self.time_vect, self.strain_vect, pen=pg.mkPen('orange', width=4))
         self.line11 = self.p11.plot(self.time_vect, self.cap_vect, pen=pg.mkPen('orange', width=4))
-        #self.line11_sp = self.p11.plot(self.time_vect, self.sp_vect, pen=pg.mkPen('black', width=4, style=QtCore.Qt.DashLine))
+        self.line11_sp = self.p11.plot(self.time_vect, self.sp_vect, pen=pg.mkPen('black', width=4, style=QtCore.Qt.DashLine))
         self.line12 = self.p12.plot(self.time_vect, self.dl_vect, pen=pg.mkPen('blue', width=4))
         self.line21 = self.p21.plot(self.time_vect, self.v1_vect, pen=pg.mkPen('red', width=4))
         self.line22 = self.p22.plot(self.time_vect, self.v2_vect, pen=pg.mkPen('green', width=4))
@@ -1035,22 +1164,22 @@ class StrainDisplay:
         '''
         updates GUI plot
         '''
-        values = np.zeros(len(self.labels_val))
+        values = {}
         t_start = time.time()
 
         # update labels
         for i, (name, q) in enumerate(self.labels_dict.items()):
             val = queue_read(q)
-            values[i] = val
-            self.labels_val[i].setText(str(round(float(val),4)))
+            values[name] = val
+            self.labels_val[name].setText(str(round(float(val),4)))
 
         # get new data - make more robust
-        new_strain = values[2]
-        new_dl = values[4]
-        new_v1 = values[5]
-        new_v2 = values[6]
-        new_cap = values[3]
-        new_sp = values[1]
+        new_strain = values['Strain']
+        new_dl = values['dL (um)']
+        new_v1 = values['Voltage 1 (V)']
+        new_v2 = values['Voltage 2 (V)']
+        new_cap = values['Capacitance (pF)']
+        new_sp = values['Setpoint']
 
         # update plot data
         self.time_vect[self.j] = t_start -self.t0
@@ -1061,9 +1190,9 @@ class StrainDisplay:
         self.v2_vect[self.j] = new_v2
         self.cap_vect[self.j] = new_cap
         indx = np.argsort(self.time_vect)
-        self.line11.setData(self.time_vect[indx], self.cap_vect[indx])
         #self.line11.setData(self.time_vect[indx], self.strain_vect[indx])
-        #self.line11_sp.setData(self.time_vect[indx], self.sp_vect[indx])
+        self.line11.setData(self.time_vect[indx], self.cap_vect[indx])
+        self.line11_sp.setData(self.time_vect[indx], self.sp_vect[indx])
         self.line12.setData(self.time_vect[indx], self.dl_vect[indx])
         self.line21.setData(self.time_vect[indx], self.v1_vect[indx])
         self.line22.setData(self.time_vect[indx], self.v2_vect[indx])
@@ -1075,7 +1204,7 @@ class StrainDisplay:
         # self.p22.autoRange()
         t_lower, t_upper = np.min(self.time_vect), np.max(self.time_vect)
         #s_lower, s_upper = self.find_axes_limits(min(np.min(self.strain_vect), np.min(self.sp_vect)), max(np.max(self.sp_vect), np.max(self.strain_vect)))
-        cap_lower, cap_upper = self.find_axes_limits(np.min(self.cap_vect), np.max(self.cap_vect))
+        cap_lower, cap_upper = self.find_axes_limits(min(np.min(self.cap_vect), np.min(self.sp_vect)), max(np.max(self.sp_vect), np.max(self.cap_vect)))
         dl_lower, dl_upper = self.find_axes_limits(np.min(self.dl_vect), np.max(self.dl_vect))
         v1_lower, v1_upper = self.find_axes_limits(np.min(self.v1_vect), np.max(self.v1_vect))
         v2_lower, v2_upper = self.find_axes_limits(np.min(self.v2_vect), np.max(self.v2_vect))
