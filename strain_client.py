@@ -177,6 +177,21 @@ class StrainClient:
         response = self.transmit(message)
         return response
 
+    def set_cap(self, cap_setpoint):
+        '''
+        sets capacitance on cell
+
+        args:
+            - cap_setpoint(float):   cap to set in pF
+
+        returns:
+            - response:         '1' if successful
+        '''
+
+        message = f'CAP:{cap_setpoint}'
+        response = self.transmit(message)
+        return response
+
     def set_output(self, channel, state):
         '''
         enable or disable output voltage on given channel.

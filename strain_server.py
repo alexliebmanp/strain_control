@@ -363,6 +363,31 @@ class StrainServer:
                     loop_cond = False
             n=n+1
 
+    def set_cap(self, cap_setpoint, wait_time=0):
+        '''
+        Ramp voltage on power supply to an approximately correct capacitance, returning once that strain has been achieved within tolerance. This can be proceeded by PID control if necessary.
+
+        args:
+            - setpoint(float):  strain setpoint. We take this as an explicit parameter to avoid possible conflicts and make this function cleaner.
+
+        returns: None
+
+        '''
+        cap_current = self.cap.locked_read()
+        ps_current = self.get_ps()
+        ps_increment = self.slew_rate.locked_read()
+        cap_tol=0.0005
+        direction = -(cap_setpoint - cap_current)/abs(cap_setpoint - cap_current)
+        ps_val = ps_current
+        err = abs(cap_setpoint - cap_current)
+        while err > cap_tol:
+            self.set_ps(ps_val)
+            time.sleep(1)
+            cap_current = self.cap.locked_read()
+            direction = -(cap_setpoint - cap_current)/abs(cap_setpoint - cap_current)
+            err = abs(cap_setpoint - cap_current)
+            ps_val = ps_val + direction*ps_increment
+
     def start_pid(self, setpoint, limit=False):
         '''
         Start PID loop to control strain.
@@ -716,6 +741,10 @@ class StrainServer:
             response = str(self.dl.locked_read())
         elif message == 'CAP:?':
             response = str(self.cap.locked_read())
+        elif re.match(r'CAP:-?[0-9]+[\.]?[0-9]*', message):
+            cap_setpoint = float(re.findall(r'-?[0-9]+[\.]?[0-9]*', message)[0])
+            self.set_cap(cap_setpoint)
+            response = '1'
         elif re.match(r'STR:-?[0-9]+[\.]?[0-9]*', message):
             setpoint = float(re.search(r'-?[0-9]+[\.]?[0-9]*', message)[0])
             self.setpoint.locked_update(setpoint)
@@ -966,7 +995,8 @@ class StrainDisplay:
         for p in [self.p11,self.p12,self.p21,self.p22]:
             p.disableAutoRange()
             p.setLabel('bottom', 'time (s)')
-        self.p11.setLabel('left', 'strain (a.u.)')
+        #self.p11.setLabel('left', 'strain (a.u.)')
+        self.p11.setLabel('left', 'Capacitance (pF)')
         self.p12.setLabel('left', r'dl (<font>&mu;m)')
         self.p21.setLabel('left', 'voltage 1 (V)')
         self.p22.setLabel('left', 'voltage 2 (V)')
@@ -979,8 +1009,9 @@ class StrainDisplay:
         self.v1_vect = queue_read(self.voltage_1_q)*np.ones(self.window)
         self.v2_vect = queue_read(self.voltage_2_q)*np.ones(self.window)
         self.cap_vect = queue_read(self.cap_q)*np.ones(self.window)
-        self.line11 = self.p11.plot(self.time_vect, self.strain_vect, pen=pg.mkPen('orange', width=4))
-        self.line11_sp = self.p11.plot(self.time_vect, self.sp_vect, pen=pg.mkPen('black', width=4, style=QtCore.Qt.DashLine))
+        #self.line11 = self.p11.plot(self.time_vect, self.strain_vect, pen=pg.mkPen('orange', width=4))
+        self.line11 = self.p11.plot(self.time_vect, self.cap_vect, pen=pg.mkPen('orange', width=4))
+        #self.line11_sp = self.p11.plot(self.time_vect, self.sp_vect, pen=pg.mkPen('black', width=4, style=QtCore.Qt.DashLine))
         self.line12 = self.p12.plot(self.time_vect, self.dl_vect, pen=pg.mkPen('blue', width=4))
         self.line21 = self.p21.plot(self.time_vect, self.v1_vect, pen=pg.mkPen('red', width=4))
         self.line22 = self.p22.plot(self.time_vect, self.v2_vect, pen=pg.mkPen('green', width=4))
@@ -1030,8 +1061,9 @@ class StrainDisplay:
         self.v2_vect[self.j] = new_v2
         self.cap_vect[self.j] = new_cap
         indx = np.argsort(self.time_vect)
-        self.line11.setData(self.time_vect[indx], self.strain_vect[indx])
-        self.line11_sp.setData(self.time_vect[indx], self.sp_vect[indx])
+        self.line11.setData(self.time_vect[indx], self.cap_vect[indx])
+        #self.line11.setData(self.time_vect[indx], self.strain_vect[indx])
+        #self.line11_sp.setData(self.time_vect[indx], self.sp_vect[indx])
         self.line12.setData(self.time_vect[indx], self.dl_vect[indx])
         self.line21.setData(self.time_vect[indx], self.v1_vect[indx])
         self.line22.setData(self.time_vect[indx], self.v2_vect[indx])
@@ -1042,13 +1074,15 @@ class StrainDisplay:
         # self.p21.autoRange()
         # self.p22.autoRange()
         t_lower, t_upper = np.min(self.time_vect), np.max(self.time_vect)
-        s_lower, s_upper = self.find_axes_limits(min(np.min(self.strain_vect), np.min(self.sp_vect)), max(np.max(self.sp_vect), np.max(self.strain_vect)))
+        #s_lower, s_upper = self.find_axes_limits(min(np.min(self.strain_vect), np.min(self.sp_vect)), max(np.max(self.sp_vect), np.max(self.strain_vect)))
+        cap_lower, cap_upper = self.find_axes_limits(np.min(self.cap_vect), np.max(self.cap_vect))
         dl_lower, dl_upper = self.find_axes_limits(np.min(self.dl_vect), np.max(self.dl_vect))
         v1_lower, v1_upper = self.find_axes_limits(np.min(self.v1_vect), np.max(self.v1_vect))
         v2_lower, v2_upper = self.find_axes_limits(np.min(self.v2_vect), np.max(self.v2_vect))
         for p in [self.p11, self.p12, self.p21, self.p22]:
             p.setXRange(t_lower, t_upper)
-        self.p11.setYRange(s_lower, s_upper)
+        #self.p11.setYRange(s_lower, s_upper)
+        self.p11.setYRange(cap_lower, cap_upper)
         self.p12.setYRange(dl_lower, dl_upper)
         self.p21.setYRange(v1_lower, v1_upper)
         self.p22.setYRange(v2_lower, v2_upper)
