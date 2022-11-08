@@ -78,6 +78,28 @@ class StrainClient:
         response = self.transmit(message)
         return response
 
+    def start_cap_control(self, mode='PID'):
+        '''
+        initiate control loop on strain server.
+
+        returns:
+            - response:     '1' if successful
+
+        kwargs:
+            - mode(string):     'PID', 'Set Voltage', or 'Combined'
+        '''
+        if mode not in ['PID', 'Set Cap', 'Combined']:
+            raise ValueError('invalid control mode, please input PID, Set Cap, or Combine.')
+        if mode=='PID':
+            code=1
+        elif mode=='Set Cap':
+            code=2
+        elif mode=='Combined':
+            code=3
+        message = 'SCAPCTRL:'+str(code)
+        response = self.transmit(message)
+        return response
+
     def stop_strain_control(self):
         '''
         stop control loop on strain server.
@@ -87,6 +109,18 @@ class StrainClient:
         '''
 
         message = 'ECTRL:'
+        response = self.transmit(message)
+        return response
+
+    def stop_cap_control(self):
+        '''
+        stop control loop on strain server.
+
+        returns:
+            - response:     '1' if successful
+        '''
+
+        message = 'ECAPCTRL:'
         response = self.transmit(message)
         return response
 
@@ -149,6 +183,19 @@ class StrainClient:
         voltage = float(self.transmit(message))
         return voltage
 
+    def get_ps(self):
+        '''
+        reads total voltage on power supply.
+
+        args: None
+
+        returns:
+            - voltage(float):
+        '''
+        message = 'PS:?'
+        voltage = float(self.transmit(message))
+        return voltage
+
     def set_setpoint(self, new_setpoint):
         '''
         change target strain setpoint of control loop.
@@ -161,6 +208,21 @@ class StrainClient:
         '''
 
         message = 'STR:'+str(new_setpoint)
+        response = self.transmit(message)
+        return response
+
+    def set_cap(self, cap_setpoint):
+        '''
+        sets capacitance on cell
+
+        args:
+            - cap_setpoint(float):   cap to set in pF
+
+        returns:
+            - response:         '1' if successful
+        '''
+
+        message = f'CAP:{cap_setpoint}'
         response = self.transmit(message)
         return response
 
@@ -195,6 +257,21 @@ class StrainClient:
         if not(channel==1 or channel==2):
             raise ValueError('Invalid power supply voltage channel, please choose either 1 or 2.')
         message = 'OUT'+str(channel)+':?'
+        response = self.transmit(message)
+        return response
+
+    def set_ps(self, voltage):
+        '''
+        sets ps voltage as given by set_ps()
+
+        args:
+            - voltage(float):   voltage to set
+
+        returns:
+            - response:         '1' if successful
+        '''
+
+        message = f'PS:{voltage}'
         response = self.transmit(message)
         return response
 
