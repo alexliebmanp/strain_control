@@ -47,7 +47,7 @@ import traceback
 ##########################
 global SIM, STARTING_SETPOINT, SLEW_RATE, P, I, D, L0, MAX_VOLTAGE, MIN_VOLTAGE, HOST, PORT, LCR_ADDRESS, PS_ADDRESS, LOG_FILENAMEHEAD
 
-SIM=True
+SIM=False
 STARTING_SETPOINT=0
 SLEW_RATE=0.5
 P=100
@@ -443,7 +443,7 @@ class StrainServer:
         returns: None
 
         '''
-        
+
         cap_current = self.cap.locked_read()
         ps_current = self.get_ps()
         ps_increment = self.slew_rate.locked_read()
