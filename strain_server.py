@@ -443,7 +443,7 @@ class StrainServer:
         returns: None
 
         '''
-        
+
         cap_current = self.cap.locked_read()
         ps_current = self.get_ps()
         ps_increment = self.slew_rate.locked_read()
