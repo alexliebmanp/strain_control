@@ -67,7 +67,7 @@ MAX_VOLTAGE = 5#119 # V
 MIN_VOLTAGE = -5#-19 # V
 
 ### COMMUNICATION SETTINGS ###
-LCR_ADDRESS = 'USB0::0x2A8D::0x2F01::MY54412905::0::INSTR'
+LCR_ADDRESS = 'GPIB1::17::INSTR' # new address for gpib connection, USB address: 'USB0::0x2A8D::0x2F01::MY54412905::0::INSTR'
 PS_ADDRESS = 'ASRL4::INSTR'
 MONTANA_ADDRESS = '10.1.1.15'
 LAKESHORE_ADDRESS = ''
@@ -1288,6 +1288,7 @@ if __name__=='__main__':
                     print(f'Bound socket from host {HOST} to port {PORT}.')
 
                     cryo = cryocore.CryoCore(MONTANA_ADDRESS)
+                    print(f'Connected to Montana Cryostat at {MONTANA_ADDRESS}')
 
                     strainserver = StrainServer(lcr, ps, cryo, s, STARTING_SETPOINT, P, I, D, L0_SAMP, l0=L0, sim=SIM)
 
