@@ -402,62 +402,6 @@ class StrainServer:
             time.sleep(time_interval)
         print('Shutting down file log thread')
 
-    def set_strain(self, setpoint):
-        '''
-        Ramp voltage on power supply to an approximately correct strain, returning once that strain has been achieved within tolerance. This can be proceeded by PID control.
-
-        args:
-            - setpoint(float):  strain setpoint. We take this as an explicit parameter to avoid possible conflicts and make this function cleaner.
-
-        returns: None
-
-        '''
-        setpoint_val = self.setpoint.locked_read()
-        strain_val = self.strain.locked_read()
-        start_voltage = self.strain_to_voltage(setpoint_val)
-        voltage_increment = 0.5
-        strain_tol=0.005
-        direction = (setpoint_val - strain_val)/abs(setpoint_val - strain_val)
-        n=0
-        while abs(strain_val) <= abs(setpoint_val):
-            approx_voltage = start_voltage + n*voltage_increment
-            self.ps_write(approx_voltage)
-
-            loop_cond = True
-            while loop_cond:
-                v1, v2 = self.get_voltage(1), self.get_voltage(2)
-                if v1 > (approx_voltage - self.ps.tol) or v1 < (approx_voltage + self.ps.tol):
-                    loop_cond = False
-                strain_val = self.strain.locked_read()
-                if abs(strain_val) >= abs(setpoint_val):
-                    loop_cond = False
-            n=n+1
-
-    def set_cap(self, cap_setpoint, wait_time=0):
-        '''
-        Ramp voltage on power supply to an approximately correct capacitance, returning once that strain has been achieved within tolerance. This can be proceeded by PID control if necessary.
-
-        args:
-            - setpoint(float):  strain setpoint. We take this as an explicit parameter to avoid possible conflicts and make this function cleaner.
-
-        returns: None
-
-        '''
-
-        cap_current = self.cap.locked_read()
-        ps_current = self.get_ps()
-        ps_increment = self.slew_rate.locked_read()
-        cap_tol=0.0005
-        direction = -(cap_setpoint - cap_current)/abs(cap_setpoint - cap_current)
-        ps_val = ps_current
-        while abs(cap_setpoint - self.cap.locked_read()) > cap_tol:
-            self.set_ps(ps_val)
-            time.sleep(1)
-            cap_current = self.cap.locked_read()
-            ps_increment = self.slew_rate.locked_read()
-            direction = -(cap_setpoint - cap_current)/abs(cap_setpoint - cap_current)
-            ps_val = ps_val + direction*ps_increment
-
     def start_pid(self, setpoint, limit=False):
         '''
         Start PID loop to control strain.
@@ -516,6 +460,62 @@ class StrainServer:
             self.set_ps(new_voltage)
             time.sleep(0.01)
 
+    def set_strain(self, setpoint):
+        '''
+        Ramp voltage on power supply to an approximately correct strain, returning once that strain has been achieved within tolerance. This can be proceeded by PID control.
+
+        args:
+            - setpoint(float):  strain setpoint. We take this as an explicit parameter to avoid possible conflicts and make this function cleaner.
+
+        returns: None
+
+        '''
+        setpoint_val = self.setpoint.locked_read()
+        strain_val = self.strain.locked_read()
+        start_voltage = self.strain_to_voltage(setpoint_val)
+        voltage_increment = 0.5
+        strain_tol=0.005
+        direction = (setpoint_val - strain_val)/abs(setpoint_val - strain_val)
+        n=0
+        while abs(strain_val) <= abs(setpoint_val):
+            approx_voltage = start_voltage + n*voltage_increment
+            self.ps_write(approx_voltage)
+
+            loop_cond = True
+            while loop_cond:
+                v1, v2 = self.get_voltage(1), self.get_voltage(2)
+                if v1 > (approx_voltage - self.ps.tol) or v1 < (approx_voltage + self.ps.tol):
+                    loop_cond = False
+                strain_val = self.strain.locked_read()
+                if abs(strain_val) >= abs(setpoint_val):
+                    loop_cond = False
+            n=n+1
+
+    def set_cap(self, cap_setpoint, wait_time=0):
+        '''
+        Ramp voltage on power supply to an approximately correct capacitance, returning once that strain has been achieved within tolerance. This can be proceeded by PID control if necessary.
+
+        args:
+            - setpoint(float):  strain setpoint. We take this as an explicit parameter to avoid possible conflicts and make this function cleaner.
+
+        returns: None
+
+        '''
+
+        cap_current = self.cap.locked_read()
+        ps_current = self.get_ps()
+        ps_increment = self.slew_rate.locked_read()
+        cap_tol=0.0005
+        direction = -(cap_setpoint - cap_current)/abs(cap_setpoint - cap_current)
+        ps_val = ps_current
+        while abs(cap_setpoint - self.cap.locked_read()) > cap_tol:
+            self.set_ps(ps_val)
+            time.sleep(1)
+            cap_current = self.cap.locked_read()
+            ps_increment = self.slew_rate.locked_read()
+            direction = -(cap_setpoint - cap_current)/abs(cap_setpoint - cap_current)
+            ps_val = ps_val + direction*ps_increment
+
     def set_ps(self, voltage):
         '''
         update both channels of power supply to new voltage. change in future to coordinate the voltages in the best way. Positive voltage is taken to be tensioning and negative voltage compression. Voltage is applied equally to each stack up to respective negative and positive limits, and an remaining voltage that needs accounting for can be applied to whichever stack still has room within limits.
@@ -552,7 +552,9 @@ class StrainServer:
         '''
         Returns a measure of total voltage applied, ie, v1 - v2
         '''
-        total_v = self.get_voltage(1) - self.get_voltage(2)
+        v1 = self.get_voltage(1)
+        v2 = self.get_voltage(2)
+        total_v = v1 - v2
         return total_v
 
     def set_voltage(self, channel, voltage):
