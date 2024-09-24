@@ -706,7 +706,12 @@ class StrainServer:
             - l(float):             gap between sample plates in um
             - dl(float):            l - l0
         '''
-        impedance = self.lcr.impedance # or read impedance as posted by another process
+        while True:
+            try:
+                impedance = self.lcr.impedance # or read impedance as posted by another process
+                break
+            except:
+                print('failed to read LCR meter, trying again.')
         cap = impedance[0]*1e12 # capacitance in pF
         imaginary_impedance = impedance[1]
         dl = self.capacitance_to_dl(cap)
