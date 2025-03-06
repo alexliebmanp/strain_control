@@ -526,6 +526,7 @@ class StrainServer:
 
         ASSUMES THAT CHANNEL 1 IS TENSION AND CHANNEL 2 IS COMPRESSIVE. IT IS THE USERS RESPONSIBILITY TO ENSURE THE WIRING IS CORRECT.
         '''
+        #print(voltage)
         if voltage < 0:
             v1 = -abs(voltage/2)
             max1 = self.max_voltage_1.locked_read()

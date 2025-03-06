@@ -207,7 +207,7 @@ class StrainClient:
             - response:         '1' if successful
         '''
 
-        message = 'STR:'+str(new_setpoint)
+        message = f'STR:{setpoint:f}'
         response = self.transmit(message)
         return response
 
@@ -222,7 +222,7 @@ class StrainClient:
             - response:         '1' if successful
         '''
 
-        message = f'CAP:{cap_setpoint}'
+        message = f'CAP:{cap_setpoint:f}'
         response = self.transmit(message)
         return response
 
@@ -271,7 +271,7 @@ class StrainClient:
             - response:         '1' if successful
         '''
 
-        message = f'PS:{voltage}'
+        message = f'PS:{voltage:f}'
         response = self.transmit(message)
         return response
 
@@ -289,7 +289,7 @@ class StrainClient:
 
         if not(channel==1 or channel==2):
             raise ValueError('Invalid power supply voltage channel, please choose either 1 or 2.')
-        message = 'VOL'+str(channel)+':'+str(voltage)
+        message = 'VOL'+str(channel)+':'+f'{voltage:f}'
         response = self.transmit(message)
         return response
 
@@ -308,7 +308,7 @@ class StrainClient:
 
         if not(channel==1 or channel==2):
             raise ValueError('Invalid power supply voltage channel, please choose either 1 or 2.')
-        message = 'VLIMS'+str(channel)+':'+str(min)+','+str(max)
+        message = f'VLIMS{channel}:{min:f}, {max:f}'
         response = self.transmit(message)
         return response
 
@@ -322,7 +322,7 @@ class StrainClient:
         returns:
             - response:         '1' if successful
         '''
-        message = 'SAMPL0:'+str(samp_l0)
+        message = f'SAMPL0:{samp_l0:f}'
         response = self.transmit(message)
         return response
 
@@ -338,7 +338,7 @@ class StrainClient:
         returns:
             - response(str):            '1' if successful
         '''
-        message = f'PID:{p},{i},{d}'
+        message = f'PID:{p:f},{i:f},{d:f}'
         response = self.transmit(message)
         return response
 
@@ -353,7 +353,7 @@ class StrainClient:
             - response:             '1' if successful
         '''
 
-        message = 'VSLW:'+str(slew_rate)
+        message = f'VSLW:{slew_rate:f}'
         response = self.transmit(message)
         return response
 
