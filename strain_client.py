@@ -207,7 +207,7 @@ class StrainClient:
             - response:         '1' if successful
         '''
 
-        message = f'STR:{setpoint:f}'
+        message = f'STR:{new_setpoint:f}'
         response = self.transmit(message)
         return response
 
@@ -308,7 +308,7 @@ class StrainClient:
 
         if not(channel==1 or channel==2):
             raise ValueError('Invalid power supply voltage channel, please choose either 1 or 2.')
-        message = f'VLIMS{channel}:{min:f}, {max:f}'
+        message = f'VLIMS{channel}:{min},{max}'
         response = self.transmit(message)
         return response
 

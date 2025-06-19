@@ -24,7 +24,7 @@ from simulation import SimulatedLCR, SimulatedPS, SimulatedMontana
 from pymeasure.instruments.agilent import AgilentE4980
 from pymeasure.instruments.razorbill import razorbillRP100
 import pyvisa
-import OrensteinLab_git.Instrument.montana.cryocore as cryocore
+import OrensteinLab_git.devices.montana.cryocore as cryocore
 from simple_pid import PID
 from threading import Thread, Lock, Event
 import threading
