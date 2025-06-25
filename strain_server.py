@@ -502,13 +502,13 @@ class StrainServer:
 
         '''
 
-        cap_current = self.cap.locked_read()
+        cap_current = np.mean([self.cap.locked_read() for i in range(nread)])
         ps_current = self.get_ps()
         ps_increment = self.slew_rate.locked_read()
-        cap_tol=0.0005
+        cap_tol=0.00005
         direction = -(cap_setpoint - cap_current)/abs(cap_setpoint - cap_current)
         ps_val = ps_current
-        while abs(cap_setpoint - self.cap.locked_read()) > cap_tol:
+        while abs(cap_setpoint - np.mean([self.cap.locked_read() for i in range(nread)])) > cap_tol:
             self.set_ps(ps_val)
             time.sleep(1)
             cap_current = self.cap.locked_read()
@@ -526,28 +526,31 @@ class StrainServer:
 
         ASSUMES THAT CHANNEL 1 IS TENSION AND CHANNEL 2 IS COMPRESSIVE. IT IS THE USERS RESPONSIBILITY TO ENSURE THE WIRING IS CORRECT.
         '''
-        #print(voltage)
-        if voltage < 0:
-            v1 = -abs(voltage/2)
-            max1 = self.max_voltage_1.locked_read()
-            min1 = self.min_voltage_1.locked_read()
-            if v1 > max1:
-                v1 = max1
-            elif v1 < min1:
-                v1 = min1
-            v2 = v1 - voltage
-        else:
-            v2 = -abs(voltage/2)
-            max2 = self.max_voltage_2.locked_read()
-            min2 = self.min_voltage_2.locked_read()
-            if v2 > max2:
-                v2 = max2
-            elif v2 < min2:
-                v2 = min2
-            v1 = voltage + v2
 
-        self.set_voltage(1, v1)
-        self.set_voltage(2, v2)
+        max1 = self.max_voltage_1.locked_read()
+        min1 = self.min_voltage_1.locked_read()
+        max2 = self.max_voltage_2.locked_read()
+        min2 = self.min_voltage_2.locked_read()
+
+        # Try to split voltage evenly: v1 - v2 = voltage, v1 and v2 within their ranges
+        v1 = clamp(voltage/2, min1, max1)
+        v2 = clamp(-voltage/2, min2, max2)
+
+        # Calculate what voltage this actually produces
+        actual_voltage = v1 - v2
+        delta = voltage - actual_voltage
+
+        # Try to adjust v1 and v2 to make up the difference, if any
+        v1_new = clamp(v1 + delta, min1, max1)
+        actual_voltage = v1_new - v2
+        delta = voltage - actual_voltage
+        v2_new = clamp(v2 - delta, min2, max2)
+
+        self.set_voltage(1, v1_new)
+        self.set_voltage(2, v2_new)
+
+    def clamp(n, minn, maxn):
+        return max(min(maxn, n), minn)
 
     def get_ps(self):
         '''
