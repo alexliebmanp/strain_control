@@ -196,7 +196,22 @@ class StrainClient:
         voltage = float(self.transmit(message))
         return voltage
 
-    def set_setpoint(self, new_setpoint):
+    def set_pid_setpoint(self, new_setpoint):
+        '''
+        change target strain setpoint of control loop.
+
+        args:
+            - new_setpoint:     setpoint to set
+
+        returns:
+            - response:         '1' if successful
+        '''
+
+        message = f'SETPT:{new_setpoint:f}'
+        response = self.transmit(message)
+        return response
+
+    def set_strain_setpoint(self, new_setpoint):
         '''
         change target strain setpoint of control loop.
 

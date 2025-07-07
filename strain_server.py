@@ -247,7 +247,7 @@ class StrainServer:
             while current_thread.stopped()==False:
                 new_setpoint = self.setpoint.locked_read()
                 current_setpoint = new_setpoint
-                self.cpid.setpoint = current_setpoint
+                self.pid.setpoint = current_setpoint
             print('Stopping PID control')
             pid_loop.stop()
             pid_loop.join()
@@ -402,12 +402,13 @@ class StrainServer:
             time.sleep(time_interval)
         print('Shutting down file log thread')
 
-    def start_pid(self, setpoint, limit=False):
+    def start_pid(self, setpoint, limit=False, channels=1):
         '''
         Start PID loop to control strain.
 
         args:
             - setpoint(float):      PID setpoint. We take this as an explicit parameter to avoid possible conflicts and make this function cleaner.
+            - channels:             if 1 or 2, just use channel 1 or 2. if 3, use both
 
         returns: None
 
@@ -416,6 +417,13 @@ class StrainServer:
         '''
         if limit==True:
             v0 = self.get_ps()
+
+        if channels==1:
+            setf = lambda v: self.set_voltage(1, v)
+        elif channels==2:
+            setf = lambda v: self.set_voltage(2, v)
+        elif channels==3:
+            setf = self.set_ps
 
         self.pid.setpoint = setpoint
         current_thread = threading.current_thread()
@@ -428,10 +436,10 @@ class StrainServer:
                     new_voltage = v0 + 5*(dv/abs(dv))
             #print(new_voltage)
             # set the new output and get current value
-            self.set_ps(new_voltage)
+            setf(new_voltage)
             time.sleep(0.01)
 
-    def start_cap_pid(self, setpoint, limit=False):
+    def start_cap_pid(self, setpoint, limit=False, channels=1):
         '''
         Start PID loop to control strain.
 
@@ -446,6 +454,13 @@ class StrainServer:
         if limit==True:
             v0 = self.get_ps()
 
+        if channels==1:
+            setf = lambda v: self.set_voltage(1, v)
+        elif channels==2:
+            setf = lambda v: self.set_voltage(2, v)
+        elif channels==3:
+            setf = self.set_ps
+
         self.pid.setpoint = setpoint
         current_thread = threading.current_thread()
         while current_thread.stopped()==False:
@@ -457,7 +472,7 @@ class StrainServer:
                     new_voltage = v0 + 5*(dv/abs(dv))
             #print(new_voltage)
             # set the new output and get current value
-            self.set_ps(new_voltage)
+            setf(new_voltage)
             time.sleep(0.01)
 
     def set_strain(self, setpoint):
@@ -493,7 +508,7 @@ class StrainServer:
 
     def set_cap(self, cap_setpoint, wait_time=0):
         '''
-        Ramp voltage on power supply to an approximately correct capacitance, returning once that strain has been achieved within tolerance. This can be proceeded by PID control if necessary.
+        Ramp voltage on power supply to an approximately correct capacitance, returning once that strain has been achieved within tolerance. This can be proceeded by PID control if necessary. DOESN'T QUITE WORK
 
         args:
             - setpoint(float):  strain setpoint. We take this as an explicit parameter to avoid possible conflicts and make this function cleaner.
@@ -502,6 +517,7 @@ class StrainServer:
 
         '''
 
+        nread=10
         cap_current = np.mean([self.cap.locked_read() for i in range(nread)])
         ps_current = self.get_ps()
         ps_increment = self.slew_rate.locked_read()
@@ -510,7 +526,7 @@ class StrainServer:
         ps_val = ps_current
         while abs(cap_setpoint - np.mean([self.cap.locked_read() for i in range(nread)])) > cap_tol:
             self.set_ps(ps_val)
-            time.sleep(1)
+            #time.sleep(1)
             cap_current = self.cap.locked_read()
             ps_increment = self.slew_rate.locked_read()
             direction = -(cap_setpoint - cap_current)/abs(cap_setpoint - cap_current)
@@ -548,9 +564,6 @@ class StrainServer:
 
         self.set_voltage(1, v1_new)
         self.set_voltage(2, v2_new)
-
-    def clamp(n, minn, maxn):
-        return max(min(maxn, n), minn)
 
     def get_ps(self):
         '''
@@ -881,6 +894,11 @@ class StrainServer:
         elif re.match(r'CAP:-?[0-9]+[\.]?[0-9]*', message):
             cap_setpoint = float(re.findall(r'-?[0-9]+[\.]?[0-9]*', message)[0])
             self.set_cap(cap_setpoint)
+            response = '1'
+        elif re.match(r'SETPT:-?[0-9]+[\.]?[0-9]*', message):
+            setpoint = float(re.findall(r'-?[0-9]+[\.]?[0-9]*', message)[0])
+            self.setpoint.locked_update(setpoint)
+            queue_write(self.setpoint_q, setpoint)
             response = '1'
         elif re.match(r'STR:-?[0-9]+[\.]?[0-9]*', message):
             setpoint = float(re.search(r'-?[0-9]+[\.]?[0-9]*', message)[0])
@@ -1264,6 +1282,9 @@ class StrainDisplay:
             lower_valid = -0.1
             upper_valid = 0.1
         return lower_valid, upper_valid
+
+def clamp(n, minn, maxn):
+    return max(min(maxn, n), minn)
 
 if __name__=='__main__':
     '''
