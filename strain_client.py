@@ -56,7 +56,7 @@ class StrainClient:
         #print(f'Received: {response}')
         return response.decode('utf8')
 
-    def start_strain_control(self, mode='PID'):
+    def start_strain_control(self, channel=1):
         '''
         initiate control loop on strain server.
 
@@ -64,21 +64,13 @@ class StrainClient:
             - response:     '1' if successful
 
         kwargs:
-            - mode(string):     'PID', 'Set Voltage', or 'Combined'
+            - channel(int):     1: channel 1, 2: channel2, 3: both
         '''
-        if mode not in ['PID', 'Set Voltage', 'Combined']:
-            raise ValueError('invalid control mode, please input PID, Set Voltage, or Combine.')
-        if mode=='PID':
-            code=1
-        elif mode=='Set Voltage':
-            code=2
-        elif mode=='Combined':
-            code=3
-        message = 'SCTRL:'+str(code)
+        message = 'SCTRL:'+str(channel)
         response = self.transmit(message)
         return response
 
-    def start_cap_control(self, mode='PID'):
+    def start_cap_control(self, channel=1):
         '''
         initiate control loop on strain server.
 
@@ -86,17 +78,9 @@ class StrainClient:
             - response:     '1' if successful
 
         kwargs:
-            - mode(string):     'PID', 'Set Voltage', or 'Combined'
+            - channel(int):     1: channel 1, 2: channel2, 3: both
         '''
-        if mode not in ['PID', 'Set Cap', 'Combined']:
-            raise ValueError('invalid control mode, please input PID, Set Cap, or Combine.')
-        if mode=='PID':
-            code=1
-        elif mode=='Set Cap':
-            code=2
-        elif mode=='Combined':
-            code=3
-        message = 'SCAPCTRL:'+str(code)
+        message = 'SCAPCTRL:'+str(channel)
         response = self.transmit(message)
         return response
 
@@ -196,7 +180,7 @@ class StrainClient:
         voltage = float(self.transmit(message))
         return voltage
 
-    def set_pid_setpoint(self, new_setpoint):
+    def set_setpoint(self, new_setpoint):
         '''
         change target strain setpoint of control loop.
 
@@ -208,36 +192,6 @@ class StrainClient:
         '''
 
         message = f'SETPT:{new_setpoint:f}'
-        response = self.transmit(message)
-        return response
-
-    def set_strain_setpoint(self, new_setpoint):
-        '''
-        change target strain setpoint of control loop.
-
-        args:
-            - new_setpoint:     setpoint to set
-
-        returns:
-            - response:         '1' if successful
-        '''
-
-        message = f'STR:{new_setpoint:f}'
-        response = self.transmit(message)
-        return response
-
-    def set_cap(self, cap_setpoint):
-        '''
-        sets capacitance on cell
-
-        args:
-            - cap_setpoint(float):   cap to set in pF
-
-        returns:
-            - response:         '1' if successful
-        '''
-
-        message = f'CAP:{cap_setpoint:f}'
         response = self.transmit(message)
         return response
 
@@ -341,6 +295,20 @@ class StrainClient:
         response = self.transmit(message)
         return response
 
+    def set_cap0(self, cap0):
+        '''
+        sets 0 strain capacitance.
+
+        args:
+            - cap0(float):   0 strain capactiance in pF
+
+        returns:
+            - response:         '1' if successful
+        '''
+        message = f'CAP0:{cap0:f}'
+        response = self.transmit(message)
+        return response
+
     def set_pid(self, p, i, d):
         '''
         Set PID parameters.
@@ -372,7 +340,7 @@ class StrainClient:
         response = self.transmit(message)
         return response
 
-    def shutdown_server(self, mode=1):
+    def shutdown_server(self, mode=0):
         '''
         Terminates strain server, correctly shutting down the system and leaving it in a stable, safe state (by default, all voltages ramped to 0 and communications ports closed properly).
 
